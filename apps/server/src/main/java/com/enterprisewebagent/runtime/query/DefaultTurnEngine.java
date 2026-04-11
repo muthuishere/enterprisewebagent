@@ -3,7 +3,9 @@ package com.enterprisewebagent.runtime.query;
 import com.enterprisewebagent.runtime.events.*;
 import com.enterprisewebagent.runtime.prompt.PromptSection;
 import com.enterprisewebagent.runtime.provider.ModelProvider;
+import com.enterprisewebagent.runtime.provider.ModelProviderRegistry;
 import com.enterprisewebagent.runtime.provider.ModelRequest;
+import com.enterprisewebagent.runtime.provider.ProviderModels;
 import com.enterprisewebagent.runtime.tools.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,16 +20,16 @@ public class DefaultTurnEngine implements TurnEngine {
 
     private static final int MAX_TOOL_ITERATIONS = 10;
 
-    private final ModelProvider modelProvider;
+    private final ModelProviderRegistry providerRegistry;
     private final DefaultToolRegistry toolRegistry;
     private final RuntimeEventPublisher eventPublisher;
 
     public DefaultTurnEngine(
-            ModelProvider modelProvider,
+            ModelProviderRegistry providerRegistry,
             DefaultToolRegistry toolRegistry,
             RuntimeEventPublisher eventPublisher
     ) {
-        this.modelProvider = modelProvider;
+        this.providerRegistry = providerRegistry;
         this.toolRegistry = toolRegistry;
         this.eventPublisher = eventPublisher;
     }
@@ -133,12 +135,30 @@ public class DefaultTurnEngine implements TurnEngine {
     }
 
     private String callModel(List<PromptSection> prompt, TurnRequest request) {
+        ModelProvider provider = resolveProvider(request.model());
+        String actualModel = ProviderModels.resolveModelName(request.model());
         ModelRequest modelRequest = new ModelRequest(
                 prompt,
-                request.model(),
+                actualModel,
                 request.options() != null ? request.options() : Map.of()
         );
-        return modelProvider.complete(modelRequest);
+        return provider.complete(modelRequest);
+    }
+
+    private ModelProvider resolveProvider(String model) {
+        if (model == null || model.isBlank()) {
+            return providerRegistry.getProvider(null);
+        }
+        String providerId = ProviderModels.resolveProvider(model);
+        if (providerId == null) {
+            return providerRegistry.getProvider(null);
+        }
+        try {
+            return providerRegistry.getProvider(providerId);
+        } catch (IllegalArgumentException e) {
+            log.warn("Provider '{}' not registered, falling back to default", providerId);
+            return providerRegistry.getProvider(null);
+        }
     }
 
     private ToolContext buildToolContext(TurnRequest request) {

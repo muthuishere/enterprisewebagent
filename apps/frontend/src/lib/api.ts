@@ -3,6 +3,21 @@ import { endpoints } from './config'
 import type { Session, TurnResult } from '@/domain/session/types'
 import type { TaskDefinition } from '@/domain/tasks/types'
 
+export interface ModelInfo {
+  id: string
+  displayName: string
+  provider: string
+  available: boolean
+}
+
+export interface AppConfig {
+  providers: string[]
+  defaultProvider: string
+  models: ModelInfo[]
+  version: string
+  runtime: string
+}
+
 export const sessionApi = {
   create: (workspaceId = 'default') =>
     apiRequest<Session>(endpoints.sessions.create(), {
@@ -13,10 +28,10 @@ export const sessionApi = {
   get: (id: string) =>
     apiRequest<Session>(endpoints.sessions.get(id)),
 
-  executeTurn: (sessionId: string, input: string) =>
+  executeTurn: (sessionId: string, input: string, model?: string) =>
     apiRequest<TurnResult>(
       `${endpoints.sessions.get(sessionId)}/turns`,
-      { method: 'POST', body: JSON.stringify({ input }) },
+      { method: 'POST', body: JSON.stringify({ input, ...(model ? { model } : {}) }) },
     ),
 
   close: (sessionId: string) =>
@@ -36,7 +51,10 @@ export const taskApi = {
 
 export const configApi = {
   get: () =>
-    apiRequest<{ providers: string[]; version: string; runtime: string }>(endpoints.config.get()),
+    apiRequest<AppConfig>(endpoints.config.get()),
+
+  refresh: () =>
+    apiRequest<AppConfig>(endpoints.config.refresh(), { method: 'POST' }),
 
   health: () =>
     apiRequest<{ status: string }>(endpoints.health()),

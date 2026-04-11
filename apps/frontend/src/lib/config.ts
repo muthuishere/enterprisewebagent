@@ -19,6 +19,7 @@ export const endpoints = {
   config: {
     get: () => `${API_BASE}/config`,
     update: () => `${API_BASE}/config`,
+    refresh: () => `${API_BASE}/config/refresh`,
   },
   health: () => '/actuator/health',
 } as const

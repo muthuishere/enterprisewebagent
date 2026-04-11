@@ -2,6 +2,7 @@ package com.enterprisewebagent.runtime.query;
 
 import com.enterprisewebagent.runtime.events.*;
 import com.enterprisewebagent.runtime.prompt.PromptSection;
+import com.enterprisewebagent.runtime.provider.DefaultModelProviderRegistry;
 import com.enterprisewebagent.runtime.provider.ModelProvider;
 import com.enterprisewebagent.runtime.provider.ModelRequest;
 import com.enterprisewebagent.runtime.tools.*;
@@ -31,7 +32,7 @@ class DefaultTurnEngineTest {
     @Test
     void simpleTurnWithNoToolCalls() {
         var engine = new DefaultTurnEngine(
-                stubProvider("Hello, how can I help?"),
+                registryWith("stub", stubProvider("Hello, how can I help?")),
                 toolRegistry,
                 eventPublisher
         );
@@ -49,12 +50,11 @@ class DefaultTurnEngineTest {
     void turnWithOneToolCallExecutesTool() {
         toolRegistry.registerExecutor(new StubToolExecutor("file_read", "file contents here"));
 
-        // First response has a tool call, second response is the final answer
         var engine = new DefaultTurnEngine(
-                stubProvider(
+                registryWith("stub", stubProvider(
                         "[TOOL_CALL]{\"name\":\"file_read\", \"arguments\":{\"path\":\"/a.txt\"}}[/TOOL_CALL]",
                         "The file contains: file contents here"
-                ),
+                )),
                 toolRegistry,
                 eventPublisher
         );
@@ -76,7 +76,8 @@ class DefaultTurnEngineTest {
             public Flux<String> stream(ModelRequest r) { return Flux.error(new RuntimeException("Model unavailable")); }
         };
 
-        var engine = new DefaultTurnEngine(failingProvider, toolRegistry, eventPublisher);
+        var engine = new DefaultTurnEngine(
+                registryWith("stub", failingProvider), toolRegistry, eventPublisher);
 
         TurnResult result = engine.executeTurn(minimalRequest("Hello"));
 
@@ -89,18 +90,16 @@ class DefaultTurnEngineTest {
 
     @Test
     void maxIterationsPreventInfiniteLoop() {
-        // Model always returns a tool call — should stop after 10 iterations
         String toolCallResponse = "[TOOL_CALL]{\"name\":\"shell\", \"arguments\":{\"command\":\"echo hi\"}}[/TOOL_CALL]";
         String[] responses = new String[12];
         Arrays.fill(responses, toolCallResponse);
-        // After max iterations the loop should exit and use whatever the last response was
         responses[10] = "Final answer after limit";
         responses[11] = "Should not reach here";
 
         toolRegistry.registerExecutor(new StubToolExecutor("shell", "hi"));
 
         var engine = new DefaultTurnEngine(
-                stubProvider(responses),
+                registryWith("stub", stubProvider(responses)),
                 toolRegistry,
                 eventPublisher
         );
@@ -108,7 +107,6 @@ class DefaultTurnEngineTest {
         TurnResult result = engine.executeTurn(minimalRequest("Run forever"));
 
         assertTrue(result.completed());
-        // Should have at most 10 tool calls (the max iterations)
         assertTrue(result.toolCalls().size() <= 10,
                 "Expected at most 10 tool calls but got " + result.toolCalls().size());
     }
@@ -118,17 +116,16 @@ class DefaultTurnEngineTest {
         toolRegistry.registerExecutor(new StubToolExecutor("shell", "output"));
 
         var engine = new DefaultTurnEngine(
-                stubProvider(
+                registryWith("stub", stubProvider(
                         "[TOOL_CALL]{\"name\":\"shell\", \"arguments\":{\"command\":\"ls\"}}[/TOOL_CALL]",
                         "Here are the files."
-                ),
+                )),
                 toolRegistry,
                 eventPublisher
         );
 
         engine.executeTurn(minimalRequest("List files"));
 
-        // Verify event order: TurnStarted → ToolRequested → ToolCompleted → TurnCompleted
         assertTrue(capturedEvents.size() >= 4,
                 "Expected at least 4 events but got " + capturedEvents.size());
         assertInstanceOf(TurnStartedEvent.class, capturedEvents.getFirst());
@@ -155,6 +152,77 @@ class DefaultTurnEngineTest {
         assertEquals(0, result.tokensUsed());
     }
 
+    @Test
+    void nullModelRoutesToDefaultProvider() {
+        var engine = new DefaultTurnEngine(
+                registryWith("stub", stubProvider("default response")),
+                toolRegistry,
+                eventPublisher
+        );
+
+        TurnResult result = engine.executeTurn(minimalRequest("Hi"));
+        assertTrue(result.completed());
+        assertEquals("default response", result.output());
+    }
+
+    @Test
+    void prefixedModelRoutesToCorrectProvider() {
+        var copilotProvider = stubProvider("copilot response");
+        var defaultProvider = stubProvider("default response");
+
+        DefaultModelProviderRegistry registry = new DefaultModelProviderRegistry();
+        registry.register("stub", defaultProvider);
+        registry.register("copilot", copilotProvider);
+        registry.setDefault("stub");
+
+        var engine = new DefaultTurnEngine(registry, toolRegistry, eventPublisher);
+
+        TurnRequest request = new TurnRequest("s1", "Hello", List.of(), List.of(),
+                List.of(), "copilot:gpt-4.1", Map.of());
+        TurnResult result = engine.executeTurn(request);
+
+        assertTrue(result.completed());
+        assertEquals("copilot response", result.output());
+    }
+
+    @Test
+    void ollamaModelRoutesToOllamaProvider() {
+        var ollamaProvider = stubProvider("ollama response");
+        var defaultProvider = stubProvider("default response");
+
+        DefaultModelProviderRegistry registry = new DefaultModelProviderRegistry();
+        registry.register("stub", defaultProvider);
+        registry.register("ollama", ollamaProvider);
+        registry.setDefault("stub");
+
+        var engine = new DefaultTurnEngine(registry, toolRegistry, eventPublisher);
+
+        TurnRequest request = new TurnRequest("s1", "Hello", List.of(), List.of(),
+                List.of(), "ollama:llama3.2", Map.of());
+        TurnResult result = engine.executeTurn(request);
+
+        assertTrue(result.completed());
+        assertEquals("ollama response", result.output());
+    }
+
+    @Test
+    void unknownProviderFallsBackToDefault() {
+        var defaultProvider = stubProvider("default response");
+
+        DefaultModelProviderRegistry registry = new DefaultModelProviderRegistry();
+        registry.register("stub", defaultProvider);
+        registry.setDefault("stub");
+
+        var engine = new DefaultTurnEngine(registry, toolRegistry, eventPublisher);
+
+        TurnRequest request = new TurnRequest("s1", "Hello", List.of(), List.of(),
+                List.of(), "nonexistent:some-model", Map.of());
+        TurnResult result = engine.executeTurn(request);
+
+        assertTrue(result.completed());
+        assertEquals("default response", result.output());
+    }
+
     // --- helpers ---
 
     private TurnRequest minimalRequest(String input) {
@@ -164,6 +232,13 @@ class DefaultTurnEngineTest {
                 List.of(new PromptSection("system", "You are a helpful assistant.", false)),
                 List.of()
         );
+    }
+
+    private static DefaultModelProviderRegistry registryWith(String id, ModelProvider provider) {
+        DefaultModelProviderRegistry registry = new DefaultModelProviderRegistry();
+        registry.register(id, provider);
+        registry.setDefault(id);
+        return registry;
     }
 
     private static ModelProvider stubProvider(String... responses) {

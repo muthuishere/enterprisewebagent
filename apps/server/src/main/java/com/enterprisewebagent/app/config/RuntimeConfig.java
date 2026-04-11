@@ -94,8 +94,7 @@ public class RuntimeConfig {
                                   DefaultToolRegistry toolRegistry,
                                   InMemoryEventPublisher eventPublisher,
                                   RuntimeMetrics runtimeMetrics) {
-        ModelProvider provider = providerRegistry.getProvider(null);
-        TurnEngine delegate = new DefaultTurnEngine(provider, toolRegistry, eventPublisher);
+        TurnEngine delegate = new DefaultTurnEngine(providerRegistry, toolRegistry, eventPublisher);
         return new ObservableTurnEngine(delegate, runtimeMetrics);
     }
 

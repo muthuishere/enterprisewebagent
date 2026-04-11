@@ -62,6 +62,7 @@ public class SessionController {
             @PathVariable String sessionId,
             @RequestBody Map<String, String> body) {
         String input = body.get("input");
+        String model = body.get("model");
         if (input == null || input.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "input is required"));
         }
@@ -71,7 +72,7 @@ public class SessionController {
             return ResponseEntity.notFound().build();
         }
 
-        log.info("Turn requested sessionId={}", sessionId);
+        log.info("Turn requested sessionId={} model={}", sessionId, model);
 
         PromptContext promptCtx = new PromptContext(sessionId, PromptPrecedence.DEFAULT, Map.of());
         List<PromptSection> promptSections = promptAssembler.assemble(promptCtx);
@@ -79,7 +80,8 @@ public class SessionController {
         ToolContext toolCtx = new ToolContext(sessionId, "normal", Set.of());
         List<ToolDefinition> tools = toolRegistry.resolveTools(toolCtx);
 
-        TurnRequest turnReq = new TurnRequest(sessionId, input, promptSections, tools);
+        TurnRequest turnReq = new TurnRequest(sessionId, input, promptSections, tools,
+                List.of(), model, Map.of());
         TurnResult result = turnEngine.executeTurn(turnReq);
 
         return ResponseEntity.ok(Map.of(

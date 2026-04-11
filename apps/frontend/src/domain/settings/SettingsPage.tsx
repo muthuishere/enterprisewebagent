@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import type { FormEvent, CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { configApi } from '@/lib/api'
+import type { ModelInfo } from '@/lib/api'
 
 const STORAGE_KEY = 'ewa-settings'
 
@@ -13,7 +15,7 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
   serverUrl: '',
   apiKey: '',
-  defaultModel: 'openai',
+  defaultModel: '',
 }
 
 export function loadSettings(): AppSettings {
@@ -28,13 +30,28 @@ function saveSettings(settings: AppSettings) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)) } catch { /* ignore */ }
 }
 
+function groupByProvider(models: ModelInfo[]): Record<string, ModelInfo[]> {
+  const grouped: Record<string, ModelInfo[]> = {}
+  for (const m of models) {
+    if (!grouped[m.provider]) grouped[m.provider] = []
+    grouped[m.provider].push(m)
+  }
+  return grouped
+}
+
 export function SettingsPage() {
   const navigate = useNavigate()
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [saved, setSaved] = useState(false)
+  const [models, setModels] = useState<ModelInfo[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setSettings(loadSettings())
+    configApi.get()
+      .then((cfg) => setModels(cfg.models ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
 
   const handleSubmit = (e: FormEvent) => {
@@ -43,6 +60,17 @@ export function SettingsPage() {
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
+
+  const handleRefresh = async () => {
+    setLoading(true)
+    try {
+      const cfg = await configApi.refresh()
+      setModels(cfg.models ?? [])
+    } catch { /* ignore */ }
+    setLoading(false)
+  }
+
+  const grouped = groupByProvider(models)
 
   return (
     <div style={containerStyle}>
@@ -77,15 +105,28 @@ export function SettingsPage() {
 
           <label style={labelStyle}>
             Default Model
-            <select
-              value={settings.defaultModel}
-              onChange={(e) => setSettings((s) => ({ ...s, defaultModel: e.target.value }))}
-              style={inputStyle}
-            >
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="stub">Stub</option>
-            </select>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <select
+                value={settings.defaultModel}
+                onChange={(e) => setSettings((s) => ({ ...s, defaultModel: e.target.value }))}
+                style={{ ...inputStyle, flex: 1 }}
+                disabled={loading}
+              >
+                <option value="">Use server default</option>
+                {Object.entries(grouped).map(([provider, providerModels]) => (
+                  <optgroup key={provider} label={provider.charAt(0).toUpperCase() + provider.slice(1)}>
+                    {providerModels.map((m) => (
+                      <option key={m.id} value={m.id} disabled={!m.available}>
+                        {m.displayName}{!m.available ? ' (unavailable)' : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <button type="button" onClick={handleRefresh} style={refreshButtonStyle} disabled={loading}>
+                ↻
+              </button>
+            </div>
           </label>
 
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.5rem' }}>
@@ -144,6 +185,17 @@ const saveButtonStyle: CSSProperties = {
   cursor: 'pointer',
   fontSize: '1rem',
   fontWeight: 500,
+}
+
+const refreshButtonStyle: CSSProperties = {
+  padding: '0.5rem 0.75rem',
+  borderRadius: '0.5rem',
+  border: '1px solid var(--color-border)',
+  backgroundColor: 'var(--color-input-bg)',
+  color: 'var(--color-text)',
+  cursor: 'pointer',
+  fontSize: '1rem',
+  lineHeight: 1,
 }
 
 const linkButtonStyle: CSSProperties = {
