@@ -1,0 +1,69 @@
+package com.enterprisewebagent.app.config;
+
+import com.enterprisewebagent.runtime.agents.WorkerOrchestrator;
+import com.enterprisewebagent.runtime.events.InMemoryEventPublisher;
+import com.enterprisewebagent.runtime.prompt.PromptAssembler;
+import com.enterprisewebagent.runtime.prompt.PromptSectionCache;
+import com.enterprisewebagent.runtime.prompt.PromptSectionRegistry;
+import com.enterprisewebagent.runtime.provider.DefaultModelProviderRegistry;
+import com.enterprisewebagent.runtime.query.TurnEngine;
+import com.enterprisewebagent.runtime.session.SessionManager;
+import com.enterprisewebagent.runtime.tasks.TaskManager;
+import com.enterprisewebagent.runtime.tools.DefaultToolRegistry;
+import com.enterprisewebagent.runtime.tools.ToolContext;
+import org.junit.jupiter.api.Test;
+
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class RuntimeConfigTest {
+
+    private final RuntimeConfig config = new RuntimeConfig();
+
+    @Test
+    void allBeansAreNonNull() {
+        PromptSectionCache cache = config.promptSectionCache();
+        PromptSectionRegistry registry = config.promptSectionRegistry();
+        PromptAssembler assembler = config.promptAssembler(registry, cache);
+        InMemoryEventPublisher eventPublisher = config.eventPublisher();
+        DefaultToolRegistry toolRegistry = config.toolRegistry();
+        SessionManager sessionManager = config.sessionManager();
+        TaskManager taskManager = config.taskManager();
+        DefaultModelProviderRegistry providerRegistry = config.modelProviderRegistry();
+        TurnEngine turnEngine = config.turnEngine(providerRegistry, toolRegistry, eventPublisher);
+        WorkerOrchestrator orchestrator = config.workerOrchestrator(turnEngine, assembler, toolRegistry, eventPublisher);
+
+        assertNotNull(cache);
+        assertNotNull(registry);
+        assertNotNull(assembler);
+        assertNotNull(eventPublisher);
+        assertNotNull(toolRegistry);
+        assertNotNull(sessionManager);
+        assertNotNull(taskManager);
+        assertNotNull(providerRegistry);
+        assertNotNull(turnEngine);
+        assertNotNull(orchestrator);
+    }
+
+    @Test
+    void toolRegistryHasBuiltInTools() {
+        DefaultToolRegistry toolRegistry = config.toolRegistry();
+        var tools = toolRegistry.resolveTools(new ToolContext("test", "normal", Set.of()));
+        assertFalse(tools.isEmpty(), "Built-in tools should be registered");
+
+        var toolNames = tools.stream().map(t -> t.name()).toList();
+        assertTrue(toolNames.contains("ask_user"), "Should have ask_user tool");
+        assertTrue(toolNames.contains("file_read"), "Should have file_read tool");
+        assertTrue(toolNames.contains("file_edit"), "Should have file_edit tool");
+        assertTrue(toolNames.contains("shell"), "Should have shell tool");
+    }
+
+    @Test
+    void modelProviderRegistryHasStubProvider() {
+        DefaultModelProviderRegistry registry = config.modelProviderRegistry();
+        var providers = registry.availableProviders();
+        assertTrue(providers.contains("stub"), "Should have stub provider");
+        assertNotNull(registry.getProvider(null), "Default provider should be available");
+    }
+}
