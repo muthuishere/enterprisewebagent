@@ -63,9 +63,11 @@ enterprisewebagent/
 
 ## Early Priorities
 
-- map the existing core prompt, tool, and instruction behavior before making architectural substitutions
-- lock runtime-core boundaries
-- define task and session models
-- define transport-agnostic runtime events
-- keep background execution inside the Spring app first
-- defer auth until the runtime boundaries are stable
+All completed in Phase 1:
+
+- ✅ map the existing core prompt, tool, and instruction behavior before making architectural substitutions
+- ✅ lock runtime-core boundaries
+- ✅ define task and session models
+- ✅ define transport-agnostic runtime events
+- ✅ keep background execution inside the Spring app first
+- ⏳ defer auth until the runtime boundaries are stable (boundaries now stable — auth is next)

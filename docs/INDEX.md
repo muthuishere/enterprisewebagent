@@ -1,27 +1,33 @@
 # enterprisewebagent Documentation Index
 
+## Architecture & Status
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — runtime architecture, module inventory, data flows, what remains
+- [PARITY_VERIFICATION.md](./PARITY_VERIFICATION.md) — Step 17 parity checklist (12/14 PASS)
+
+## Product & Requirements
 - [PRODUCT.md](./PRODUCT.md)
 - [PRD.md](./PRD.md)
 - [fsd-enterprisewebagent.md](./fsd-enterprisewebagent.md)
 - [trd-enterprisewebagent.md](./trd-enterprisewebagent.md)
-- [lld-core-parity.md](./lld-core-parity.md)
-- [reference-current-core-prompt-system.md](./reference-current-core-prompt-system.md)
-- [IMPLEMENTATION_HANDOFF.md](./IMPLEMENTATION_HANDOFF.md)
-- [prompts/](./prompts)
 - [SCENARIOS.md](./SCENARIOS.md)
 - [NON_GOALS.md](./NON_GOALS.md)
+
+## Technical Design
+- [lld-core-parity.md](./lld-core-parity.md) — low-level parity contract
+- [reference-current-core-prompt-system.md](./reference-current-core-prompt-system.md) — behavioral reference
 - [EXECUTION_PIPELINE.md](./EXECUTION_PIPELINE.md)
 
-Recommended reading order:
+## Implementation
+- [IMPLEMENTATION_HANDOFF.md](./IMPLEMENTATION_HANDOFF.md) — 17-step guide (all steps complete)
+- [prompts/](./prompts) — 12 prompt surface definitions (001–012)
 
-1. `PRODUCT.md`
-2. `PRD.md`
-3. `fsd-enterprisewebagent.md`
-4. `trd-enterprisewebagent.md`
-5. `lld-core-parity.md`
-6. `reference-current-core-prompt-system.md`
-7. `IMPLEMENTATION_HANDOFF.md`
-8. `prompts/`
-9. `SCENARIOS.md`
-10. `NON_GOALS.md`
-11. `EXECUTION_PIPELINE.md`
+## Recommended Reading Order
+
+1. `PRODUCT.md` — what this is
+2. `PRD.md` — what it needs to do
+3. `ARCHITECTURE.md` — how it's built (start here if you're a developer)
+4. `trd-enterprisewebagent.md` — technical requirements
+5. `lld-core-parity.md` — what must be preserved from the original core
+6. `IMPLEMENTATION_HANDOFF.md` — how it was built (17 steps)
+7. `PARITY_VERIFICATION.md` — verification results
+8. `prompts/` — the 12 prompt surfaces
