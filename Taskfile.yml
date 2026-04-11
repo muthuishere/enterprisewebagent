@@ -115,3 +115,15 @@ tasks:
       - cd apps/cli && task clean
       - cd apps/frontend && task clean
 
+  # --- CLI Packaging ---
+
+  cli:shadow:
+    desc: Build CLI shadow (fat) JAR
+    dir: apps/cli
+    cmd: ./gradlew shadowJar
+
+  cli:dist:
+    desc: Build CLI distribution (fat JAR + wrapper script)
+    dir: apps/cli
+    cmd: ./gradlew dist
+

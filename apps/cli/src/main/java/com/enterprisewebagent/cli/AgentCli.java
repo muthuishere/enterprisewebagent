@@ -2,12 +2,13 @@ package com.enterprisewebagent.cli;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.IVersionProvider;
 import picocli.CommandLine.Option;
 
 @Command(
     name = "agent",
     mixinStandardHelpOptions = true,
-    version = "enterprisewebagent-cli 0.0.1",
+    versionProvider = AgentCli.VersionProvider.class,
     description = "Enterprise Web Agent CLI — terminal surface for the agent runtime.",
     subcommands = {
         HealthCommand.class,
@@ -30,5 +31,12 @@ public class AgentCli implements Runnable {
     public static void main(String[] args) {
         int exitCode = new CommandLine(new AgentCli()).execute(args);
         System.exit(exitCode);
+    }
+
+    static class VersionProvider implements IVersionProvider {
+        @Override
+        public String[] getVersion() {
+            return new String[]{"enterprisewebagent-cli " + BuildVersion.VERSION};
+        }
     }
 }

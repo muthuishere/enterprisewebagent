@@ -1,10 +1,11 @@
 plugins {
     id 'java'
     id 'application'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
 
 group = 'com.enterprisewebagent'
-version = '0.0.1-SNAPSHOT'
+version = project.findProperty('version') ?: '0.0.1-SNAPSHOT'
 
 java {
     toolchain {
@@ -43,8 +44,118 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs.add("-Aproject=${project.group}/${project.name}")
 }
 
+// --- Version embedding ---
+def generatedSrcDir = layout.buildDirectory.dir('generated/sources/version/java/main')
+
+tasks.register('generateVersionFile') {
+    def outputDir = generatedSrcDir
+    inputs.property('projectVersion', project.version)
+    outputs.dir(outputDir)
+    doLast {
+        def dir = outputDir.get().asFile.toPath()
+            .resolve('com/enterprisewebagent/cli')
+        dir.toFile().mkdirs()
+        dir.resolve('BuildVersion.java').toFile().text = """\
+package com.enterprisewebagent.cli;
+
+/** Auto-generated at build time. */
+public final class BuildVersion {
+    public static final String VERSION = "${project.version}";
+    private BuildVersion() {}
+}
+"""
+    }
+}
+
+sourceSets.main.java.srcDir(generatedSrcDir)
+tasks.named('compileJava') { dependsOn 'generateVersionFile' }
+
+// --- JAR manifests ---
 jar {
     manifest {
-        attributes 'Main-Class': application.mainClass
+        attributes(
+            'Main-Class': application.mainClass.get(),
+            'Implementation-Version': project.version
+        )
+    }
+}
+
+shadowJar {
+    archiveBaseName.set('enterprisewebagent-cli')
+    archiveClassifier.set('all')
+    mergeServiceFiles()
+    manifest {
+        attributes(
+            'Main-Class': application.mainClass.get(),
+            'Implementation-Version': project.version
+        )
+    }
+}
+
+// --- jlink custom runtime ---
+tasks.register('jlink', Exec) {
+    dependsOn shadowJar
+    def imageDir = layout.buildDirectory.dir('jlink-image')
+    outputs.dir(imageDir)
+    doFirst { delete(imageDir) }
+
+    def jlinkBin = org.gradle.internal.jvm.Jvm.current().javaHome.toPath()
+        .resolve('bin/jlink').toString()
+
+    commandLine jlinkBin,
+        '--add-modules', 'java.base,java.net.http,java.logging',
+        '--strip-debug',
+        '--no-man-pages',
+        '--no-header-files',
+        '--compress', 'zip-6',
+        '--output', imageDir.get().asFile.absolutePath
+}
+
+tasks.register('jlinkLauncher') {
+    dependsOn 'jlink', 'shadowJar'
+    def imageDir = layout.buildDirectory.dir('jlink-image')
+    def fatJar = shadowJar.archiveFile
+    outputs.file(imageDir.map { it.file('bin/ewagent') })
+    doLast {
+        def launcher = imageDir.get().asFile.toPath().resolve('bin/ewagent').toFile()
+        launcher.text = """\
+#!/bin/sh
+SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
+IMAGE_DIR="\$(cd "\$SCRIPT_DIR/.." && pwd)"
+exec "\$IMAGE_DIR/bin/java" -jar "\$IMAGE_DIR/lib/enterprisewebagent-cli.jar" "\$@"
+"""
+        launcher.setExecutable(true)
+        // Copy the fat jar into the jlink image lib dir
+        def libDir = imageDir.get().asFile.toPath().resolve('lib').toFile()
+        libDir.mkdirs()
+        java.nio.file.Files.copy(
+            fatJar.get().asFile.toPath(),
+            libDir.toPath().resolve('enterprisewebagent-cli.jar'),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING
+        )
+    }
+}
+
+// --- Distribution task ---
+tasks.register('dist') {
+    dependsOn shadowJar
+    def distDir = layout.buildDirectory.dir('dist')
+    outputs.dir(distDir)
+    doLast {
+        def dir = distDir.get().asFile
+        dir.mkdirs()
+        // Copy fat jar
+        java.nio.file.Files.copy(
+            shadowJar.archiveFile.get().asFile.toPath(),
+            dir.toPath().resolve('enterprisewebagent-cli.jar'),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING
+        )
+        // Create wrapper script
+        def wrapper = new File(dir, 'ewagent')
+        wrapper.text = '''\
+#!/bin/sh
+exec java -jar "$(dirname "$0")/enterprisewebagent-cli.jar" "$@"
+'''
+        wrapper.setExecutable(true)
     }
 }
