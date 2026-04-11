@@ -1,5 +1,8 @@
 package com.enterprisewebagent.runtime.tools;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -9,6 +12,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DefaultToolRegistry implements ToolRegistry {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultToolRegistry.class);
 
     private final ConcurrentHashMap<String, ToolDefinition> tools = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ToolExecutor> executors = new ConcurrentHashMap<>();
@@ -49,6 +54,9 @@ public class DefaultToolRegistry implements ToolRegistry {
 
         List<ToolDefinition> sorted = new ArrayList<>(afterMode);
         sorted.sort(Comparator.comparing(ToolDefinition::name));
+
+        int deniedCount = allTools.size() - afterDeny.size();
+        log.debug("Tools resolved count={} mode={} denied={}", sorted.size(), context.mode(), deniedCount);
 
         return Collections.unmodifiableList(sorted);
     }

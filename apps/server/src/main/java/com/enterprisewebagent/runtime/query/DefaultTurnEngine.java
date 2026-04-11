@@ -5,12 +5,16 @@ import com.enterprisewebagent.runtime.prompt.PromptSection;
 import com.enterprisewebagent.runtime.provider.ModelProvider;
 import com.enterprisewebagent.runtime.provider.ModelRequest;
 import com.enterprisewebagent.runtime.tools.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class DefaultTurnEngine implements TurnEngine {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultTurnEngine.class);
 
     private static final int MAX_TOOL_ITERATIONS = 10;
 
@@ -31,6 +35,7 @@ public class DefaultTurnEngine implements TurnEngine {
     @Override
     public TurnResult executeTurn(TurnRequest request) {
         String sessionId = request.sessionId();
+        log.info("Turn started sessionId={} input_length={}", sessionId, request.input().length());
         eventPublisher.publish(new TurnStartedEvent(sessionId, Instant.now()));
 
         try {
@@ -43,6 +48,7 @@ public class DefaultTurnEngine implements TurnEngine {
 
             String modelResponse = callModel(conversationPrompt, request);
             totalTokenEstimate += estimateTokens(modelResponse);
+            log.debug("Model called iteration=0 response_length={}", modelResponse.length());
 
             for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 Optional<List<ToolInvocation>> toolCalls = ModelResponseParser.extractToolCalls(modelResponse);
@@ -56,6 +62,7 @@ public class DefaultTurnEngine implements TurnEngine {
 
                 for (ToolInvocation invocation : toolCalls.get()) {
                     allToolCalls.add(invocation);
+                    log.info("Tool call detected tool={}", invocation.name());
                     eventPublisher.publish(new ToolRequestedEvent(sessionId, invocation.name(), invocation.arguments()));
 
                     transcript.addToolCall(invocation.name(), invocation.arguments().toString());
@@ -82,11 +89,14 @@ public class DefaultTurnEngine implements TurnEngine {
 
                 modelResponse = callModel(conversationPrompt, request);
                 totalTokenEstimate += estimateTokens(modelResponse);
+                log.debug("Model called iteration={} response_length={}", iteration + 1, modelResponse.length());
             }
 
             String finalOutput = ModelResponseParser.extractTextContent(modelResponse);
             transcript.addAssistantMessage(finalOutput);
 
+            log.info("Turn completed sessionId={} iterations={} output_length={}",
+                    sessionId, allToolCalls.size(), finalOutput.length());
             eventPublisher.publish(new TurnCompletedEvent(sessionId, finalOutput, Instant.now()));
 
             return new TurnResult(
@@ -98,6 +108,7 @@ public class DefaultTurnEngine implements TurnEngine {
                     totalTokenEstimate
             );
         } catch (Exception e) {
+            log.warn("Turn failed sessionId={} error={}", sessionId, e.getMessage());
             eventPublisher.publish(new TurnFailedEvent(sessionId, e.getMessage(), Instant.now()));
             return new TurnResult(sessionId, e.getMessage(), List.of(), false, List.of(), 0);
         }

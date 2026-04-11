@@ -11,10 +11,14 @@ import com.enterprisewebagent.runtime.query.TurnResult;
 import com.enterprisewebagent.runtime.tools.ToolContext;
 import com.enterprisewebagent.runtime.tools.ToolDefinition;
 import com.enterprisewebagent.runtime.tools.ToolRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
 public class DefaultWorkerOrchestrator implements WorkerOrchestrator {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultWorkerOrchestrator.class);
 
     private final TurnEngine turnEngine;
     private final PromptAssembler promptAssembler;
@@ -36,9 +40,11 @@ public class DefaultWorkerOrchestrator implements WorkerOrchestrator {
     @Override
     public WorkerResult delegate(AgentDefinition worker, String task, AgentContext parentContext) {
         if (!parentContext.canNest()) {
+            log.warn("Worker delegation rejected role={} reason=max_nesting_depth", worker.role());
             return new WorkerResult(worker.id(), "Max nesting depth exceeded", false, List.of());
         }
 
+        log.info("Worker delegated role={} depth={}", worker.role(), parentContext.depth());
         eventPublisher.publish(new WorkerStateChangedEvent(parentContext.sessionId(), worker.id(), "started"));
 
         try {
@@ -61,6 +67,7 @@ public class DefaultWorkerOrchestrator implements WorkerOrchestrator {
             TurnResult turnResult = turnEngine.executeTurn(turnRequest);
 
             String state = turnResult.completed() ? "completed" : "failed";
+            log.info("Worker completed role={} success={}", worker.role(), turnResult.completed());
             eventPublisher.publish(new WorkerStateChangedEvent(parentContext.sessionId(), worker.id(), state));
 
             return new WorkerResult(
@@ -70,6 +77,7 @@ public class DefaultWorkerOrchestrator implements WorkerOrchestrator {
                 turnResult.toolCalls()
             );
         } catch (Exception e) {
+            log.warn("Worker failed role={} error={}", worker.role(), e.getMessage());
             eventPublisher.publish(new WorkerStateChangedEvent(parentContext.sessionId(), worker.id(), "failed"));
             return new WorkerResult(worker.id(), e.getMessage(), false, List.of());
         }

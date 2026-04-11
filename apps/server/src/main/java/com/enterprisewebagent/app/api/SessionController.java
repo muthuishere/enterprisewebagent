@@ -12,6 +12,8 @@ import com.enterprisewebagent.runtime.session.SessionManager;
 import com.enterprisewebagent.runtime.tools.ToolContext;
 import com.enterprisewebagent.runtime.tools.ToolDefinition;
 import com.enterprisewebagent.runtime.tools.ToolRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +24,8 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/v1/sessions")
 public class SessionController {
+
+    private static final Logger log = LoggerFactory.getLogger(SessionController.class);
 
     private final SessionManager sessionManager;
     private final TurnEngine turnEngine;
@@ -42,6 +46,7 @@ public class SessionController {
     public ResponseEntity<Map<String, Object>> createSession(@RequestBody Map<String, String> body) {
         String workspaceId = body.getOrDefault("workspaceId", "default");
         Session session = sessionManager.create(workspaceId);
+        log.info("Session created id={} workspaceId={}", session.id(), workspaceId);
         return ResponseEntity.ok(sessionToMap(session));
     }
 
@@ -65,6 +70,8 @@ public class SessionController {
         if (sessionOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
+
+        log.info("Turn requested sessionId={}", sessionId);
 
         PromptContext promptCtx = new PromptContext(sessionId, PromptPrecedence.DEFAULT, Map.of());
         List<PromptSection> promptSections = promptAssembler.assemble(promptCtx);

@@ -44,6 +44,7 @@ public class EventBuffer implements RuntimeEventListener {
             case TokenDeltaEvent e -> e.sessionId();
             case ToolRequestedEvent e -> e.sessionId();
             case ToolCompletedEvent e -> e.sessionId();
+            case AskUserRequestedEvent e -> e.sessionId();
             case TaskStateChangedEvent e -> e.sessionId();
             case WorkerStateChangedEvent e -> e.sessionId();
             case TurnCompletedEvent e -> e.sessionId();
