@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: enterprisewebagent
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:file:./data/enterprisewebagent}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  h2:
+    console:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  stream:
+    transport: ${APP_STREAM_TRANSPORT:websocket}
+  runtime:
+    mode: ${APP_RUNTIME_MODE:hosted}
+

@@ -1,0 +1,27 @@
+version: '3'
+
+tasks:
+  dev:
+    desc: Start Spring Boot in dev mode
+    cmds:
+      - ./gradlew bootRun
+
+  build:
+    desc: Build the server JAR
+    cmds:
+      - ./gradlew build -x test
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - ./gradlew test
+
+  test:integration:
+    desc: Run integration tests (requires Docker)
+    cmds:
+      - ./gradlew integrationTest
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - ./gradlew clean

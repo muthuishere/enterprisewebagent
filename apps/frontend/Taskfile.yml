@@ -1,0 +1,27 @@
+version: '3'
+
+tasks:
+  install:
+    desc: Install frontend dependencies
+    cmds:
+      - bun install
+
+  dev:
+    desc: Start Vite dev server
+    cmds:
+      - bun run dev
+
+  build:
+    desc: Build for production
+    cmds:
+      - bun run build
+
+  test:
+    desc: Run tests
+    cmds:
+      - bun vitest run
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf dist node_modules/.vite

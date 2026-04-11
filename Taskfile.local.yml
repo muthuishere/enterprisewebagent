@@ -1,0 +1,26 @@
+version: '3'
+
+tasks:
+
+  # --- PostgreSQL ---
+
+  postgres:start:
+    desc: Start local PostgreSQL using Docker Compose
+    cmds:
+      - docker network create ewa-network || echo "Network ewa-network already exists"
+      - docker compose -f docker-compose-postgres.yaml up -d
+
+  postgres:stop:
+    desc: Stop local PostgreSQL
+    cmds:
+      - docker compose -f docker-compose-postgres.yaml down
+
+  postgres:reset:
+    desc: Reset PostgreSQL containers and volumes (deletes all data)
+    cmds:
+      - docker compose -f docker-compose-postgres.yaml down -v
+
+  postgres:shell:
+    desc: Open psql shell
+    cmds:
+      - docker compose -f docker-compose-postgres.yaml exec postgres psql -U enterprisewebagent -d enterprisewebagent

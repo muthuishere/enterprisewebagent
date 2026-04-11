@@ -1,0 +1,27 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build the CLI
+    cmds:
+      - ./gradlew build -x test
+
+  test:
+    desc: Run tests
+    cmds:
+      - ./gradlew test
+
+  run:
+    desc: Run the CLI
+    cmds:
+      - ./gradlew run --args='{{.CLI_ARGS}}'
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - ./gradlew clean
+
+  health:
+    desc: Quick health check
+    cmds:
+      - ./gradlew run --args='health'

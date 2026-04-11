@@ -1,0 +1,117 @@
+version: '3'
+
+dotenv: ["./.env", "./application.env"]
+
+includes:
+  local:
+    taskfile: ./Taskfile.local.yml
+    dotenv: ["./.env", "./application.env"]
+  dev:
+    taskfile: ./Taskfile.dev.yml
+    dotenv: ["./.env", "./application.env"]
+  production:
+    taskfile: ./Taskfile.production.yml
+    dotenv: ["./.env", "./application.env"]
+
+tasks:
+
+  # --- Status ---
+
+  status:
+    desc: Check installation status of all required tools
+    cmds:
+      - |
+        echo "Checking required tools..."
+        for tool in java git task bun docker; do
+          if command -v $tool &> /dev/null; then
+            echo "OK $tool: $($tool --version 2>&1 | head -1)"
+          else
+            echo "MISSING $tool: Not installed"
+          fi
+        done
+
+  # --- Install ---
+
+  install:
+    desc: Install all dependencies
+    cmds:
+      - cd apps/frontend && task install
+
+  # --- Dev Mode ---
+
+  dev:
+    desc: Start all apps in dev mode (server + frontend)
+    deps: [dev:server, dev:frontend]
+
+  dev:server:
+    desc: Start Spring Boot server in dev mode
+    dir: apps/server
+    cmd: task dev
+
+  dev:frontend:
+    desc: Start Vite frontend in dev mode
+    dir: apps/frontend
+    cmd: task dev
+
+  # --- Build ---
+
+  build:
+    desc: Full production build (frontend then server)
+    cmds:
+      - task: build:frontend
+      - task: build:server
+      - task: build:cli
+
+  build:server:
+    desc: Build server JAR
+    dir: apps/server
+    cmd: task build
+
+  build:frontend:
+    desc: Build frontend
+    dir: apps/frontend
+    cmd: task build
+
+  build:cli:
+    desc: Build CLI
+    dir: apps/cli
+    cmd: task build
+
+  # --- Test ---
+
+  test:
+    desc: Run all tests
+    cmds:
+      - task: test:server
+      - task: test:frontend
+      - task: test:cli
+
+  test:server:
+    desc: Run server tests
+    dir: apps/server
+    cmd: task test
+
+  test:frontend:
+    desc: Run frontend tests
+    dir: apps/frontend
+    cmd: task test
+
+  test:cli:
+    desc: Run CLI tests
+    dir: apps/cli
+    cmd: task test
+
+  test:integration:
+    desc: Run integration tests (requires Docker)
+    dir: apps/server
+    cmd: task test:integration
+
+  # --- Clean ---
+
+  clean:
+    desc: Remove all build artifacts
+    cmds:
+      - cd apps/server && task clean
+      - cd apps/cli && task clean
+      - cd apps/frontend && task clean
+
