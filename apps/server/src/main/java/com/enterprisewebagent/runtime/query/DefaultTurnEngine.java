@@ -1,6 +1,12 @@
 package com.enterprisewebagent.runtime.query;
 
+import com.enterprisewebagent.runtime.cost.CostCalculator;
+import com.enterprisewebagent.runtime.cost.SessionCostTracker;
+import com.enterprisewebagent.runtime.cost.TurnCost;
 import com.enterprisewebagent.runtime.events.*;
+import com.enterprisewebagent.runtime.permissions.DenialTracker;
+import com.enterprisewebagent.runtime.permissions.PermissionDecision;
+import com.enterprisewebagent.runtime.permissions.PermissionEvaluator;
 import com.enterprisewebagent.runtime.prompt.PromptSection;
 import com.enterprisewebagent.runtime.provider.ModelProvider;
 import com.enterprisewebagent.runtime.provider.ModelProviderRegistry;
@@ -10,6 +16,7 @@ import com.enterprisewebagent.runtime.tools.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -23,15 +30,35 @@ public class DefaultTurnEngine implements TurnEngine {
     private final ModelProviderRegistry providerRegistry;
     private final DefaultToolRegistry toolRegistry;
     private final RuntimeEventPublisher eventPublisher;
+    private final PermissionEvaluator permissionEvaluator;
+    private final DenialTracker denialTracker;
+    private final CostCalculator costCalculator;
+    private final SessionCostTracker sessionCostTracker;
 
     public DefaultTurnEngine(
             ModelProviderRegistry providerRegistry,
             DefaultToolRegistry toolRegistry,
             RuntimeEventPublisher eventPublisher
     ) {
+        this(providerRegistry, toolRegistry, eventPublisher, null, null, null, null);
+    }
+
+    public DefaultTurnEngine(
+            ModelProviderRegistry providerRegistry,
+            DefaultToolRegistry toolRegistry,
+            RuntimeEventPublisher eventPublisher,
+            PermissionEvaluator permissionEvaluator,
+            DenialTracker denialTracker,
+            CostCalculator costCalculator,
+            SessionCostTracker sessionCostTracker
+    ) {
         this.providerRegistry = providerRegistry;
         this.toolRegistry = toolRegistry;
         this.eventPublisher = eventPublisher;
+        this.permissionEvaluator = permissionEvaluator;
+        this.denialTracker = denialTracker;
+        this.costCalculator = costCalculator;
+        this.sessionCostTracker = sessionCostTracker;
     }
 
     @Override
@@ -39,6 +66,8 @@ public class DefaultTurnEngine implements TurnEngine {
         String sessionId = request.sessionId();
         log.info("Turn started sessionId={} input_length={}", sessionId, request.input().length());
         eventPublisher.publish(new TurnStartedEvent(sessionId, Instant.now()));
+
+        Instant turnStart = Instant.now();
 
         try {
             Transcript transcript = new Transcript();
@@ -51,6 +80,8 @@ public class DefaultTurnEngine implements TurnEngine {
             String modelResponse = callModel(conversationPrompt, request);
             totalTokenEstimate += estimateTokens(modelResponse);
             log.debug("Model called iteration=0 response_length={}", modelResponse.length());
+
+            int inputTokenEstimate = estimateTokens(request.input());
 
             for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 Optional<List<ToolInvocation>> toolCalls = ModelResponseParser.extractToolCalls(modelResponse);
@@ -65,6 +96,45 @@ public class DefaultTurnEngine implements TurnEngine {
                 for (ToolInvocation invocation : toolCalls.get()) {
                     allToolCalls.add(invocation);
                     log.info("Tool call detected tool={}", invocation.name());
+
+                    // Permission check before execution
+                    if (permissionEvaluator != null) {
+                        PermissionDecision decision = permissionEvaluator.evaluate(invocation, toolContext);
+                        if (!decision.allowed() && !decision.requiresApproval()) {
+                            log.warn("Tool denied tool={} reason={}", invocation.name(), decision.reason());
+                            if (denialTracker != null) {
+                                denialTracker.recordDenial(invocation.name(), decision.reason(), Instant.now());
+                            }
+                            ToolResult deniedResult = new ToolResult(invocation.name(),
+                                    "Permission denied: " + decision.reason(), false);
+                            eventPublisher.publish(new ToolCompletedEvent(sessionId, invocation.name(), deniedResult));
+                            transcript.addToolResult(invocation.name(), deniedResult.output());
+                            toolResultsText.append("[TOOL_RESULT name=\"")
+                                    .append(invocation.name())
+                                    .append("\"]")
+                                    .append(deniedResult.output())
+                                    .append("[/TOOL_RESULT]\n");
+                            continue;
+                        }
+                        if (decision.requiresApproval()) {
+                            log.info("Tool requires approval tool={} reason={}", invocation.name(), decision.reason());
+                            eventPublisher.publish(new AskUserRequestedEvent(
+                                    sessionId,
+                                    "Permission required to execute " + invocation.name() + ": " + decision.reason(),
+                                    List.of("approve", "deny")));
+                            ToolResult pendingResult = new ToolResult(invocation.name(),
+                                    "PENDING_APPROVAL: " + decision.reason(), false);
+                            eventPublisher.publish(new ToolCompletedEvent(sessionId, invocation.name(), pendingResult));
+                            transcript.addToolResult(invocation.name(), pendingResult.output());
+                            toolResultsText.append("[TOOL_RESULT name=\"")
+                                    .append(invocation.name())
+                                    .append("\"]")
+                                    .append(pendingResult.output())
+                                    .append("[/TOOL_RESULT]\n");
+                            continue;
+                        }
+                    }
+
                     eventPublisher.publish(new ToolRequestedEvent(sessionId, invocation.name(), invocation.arguments()));
 
                     transcript.addToolCall(invocation.name(), invocation.arguments().toString());
@@ -100,6 +170,15 @@ public class DefaultTurnEngine implements TurnEngine {
             log.info("Turn completed sessionId={} iterations={} output_length={}",
                     sessionId, allToolCalls.size(), finalOutput.length());
             eventPublisher.publish(new TurnCompletedEvent(sessionId, finalOutput, Instant.now()));
+
+            // Record cost
+            if (costCalculator != null && sessionCostTracker != null) {
+                Duration apiDuration = Duration.between(turnStart, Instant.now());
+                String model = request.model() != null ? request.model() : "unknown";
+                TurnCost turnCost = costCalculator.calculate(model, inputTokenEstimate,
+                        totalTokenEstimate, 0, apiDuration);
+                sessionCostTracker.recordTurnCost(sessionId, turnCost);
+            }
 
             return new TurnResult(
                     sessionId,

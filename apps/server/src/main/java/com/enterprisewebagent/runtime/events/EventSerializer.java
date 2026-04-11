@@ -54,6 +54,11 @@ public final class EventSerializer {
                     "\"sessionId\":" + quote(e.sessionId()),
                     "\"error\":" + quote(escape(e.error())),
                     "\"timestamp\":" + quote(e.timestamp().toString()));
+
+            case ThinkingEvent e -> buildJson("thinking",
+                    "\"sessionId\":" + quote(e.sessionId()),
+                    "\"thinkingContent\":" + quote(escape(e.thinkingContent())),
+                    "\"timestamp\":" + quote(e.timestamp().toString()));
         };
     }
 

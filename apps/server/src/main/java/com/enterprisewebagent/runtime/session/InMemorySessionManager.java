@@ -12,6 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class InMemorySessionManager implements SessionManager {
 
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
+    private final InMemorySessionTagStore tagStore = new InMemorySessionTagStore();
+    private final SessionExporter exporter = new SessionExporter();
 
     @Override
     public Session create(String workspaceId) {
@@ -79,5 +81,41 @@ public class InMemorySessionManager implements SessionManager {
                 List.copyOf(newTranscript)
         );
         sessions.put(sessionId, updated);
+    }
+
+    @Override
+    public void tagSession(String sessionId, String tag) {
+        if (!sessions.containsKey(sessionId)) {
+            throw new IllegalArgumentException("Session not found: " + sessionId);
+        }
+        tagStore.addTag(sessionId, tag);
+    }
+
+    @Override
+    public List<String> getTags(String sessionId) {
+        return tagStore.getTags(sessionId);
+    }
+
+    @Override
+    public List<Session> findByTag(String tag) {
+        return tagStore.getSessionsByTag(tag).stream()
+                .map(sessions::get)
+                .filter(s -> s != null)
+                .toList();
+    }
+
+    @Override
+    public String exportSession(String sessionId, String format) {
+        var session = sessions.get(sessionId);
+        if (session == null) {
+            throw new IllegalArgumentException("Session not found: " + sessionId);
+        }
+
+        return switch (format.toLowerCase()) {
+            case "markdown" -> exporter.exportMarkdown(session);
+            case "json" -> exporter.exportJson(session);
+            case "summary" -> exporter.exportSummary(session);
+            default -> throw new IllegalArgumentException("Unknown export format: " + format);
+        };
     }
 }

@@ -9,5 +9,6 @@ public sealed interface RuntimeEvent permits
         TaskStateChangedEvent,
         WorkerStateChangedEvent,
         TurnCompletedEvent,
-        TurnFailedEvent {
+        TurnFailedEvent,
+        ThinkingEvent {
 }

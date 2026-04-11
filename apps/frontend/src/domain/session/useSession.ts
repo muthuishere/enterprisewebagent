@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { sessionApi } from '@/lib/api'
+import { sessionApi, planApi } from '@/lib/api'
 import { connectSession } from '@/lib/ws'
-import type { Session, ChatMessage } from './types'
+import type { Session, ChatMessage, Plan } from './types'
 import type { RuntimeEvent, ConnectionStatus, SessionConnection } from '@/lib/ws'
 
 export interface PendingQuestion {
@@ -17,12 +17,14 @@ export function useSession() {
   const [events, setEvents] = useState<RuntimeEvent[]>([])
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
+  const [plan, setPlan] = useState<Plan | null>(null)
   const connRef = useRef<SessionConnection | null>(null)
 
   const createSession = useCallback(async () => {
     const newSession = await sessionApi.create()
     setSession(newSession)
     setMessages([])
+    setPlan(null)
 
     const conn = connectSession(
       newSession.id,
@@ -52,7 +54,7 @@ export function useSession() {
     try {
       const result = await sessionApi.executeTurn(session.id, input)
       setMessages((prev) => [...prev, {
-        role: 'assistant',
+        role: result.isCommand ? 'command' : 'assistant',
         content: result.output,
         timestamp: new Date(),
       }])
@@ -79,12 +81,41 @@ export function useSession() {
     await sessionApi.close(session.id)
     setSession(null)
     setMessages([])
+    setPlan(null)
     setConnectionStatus('disconnected')
+  }, [session])
+
+  const refreshPlan = useCallback(async () => {
+    if (!session) return
+    try {
+      const p = await planApi.get(session.id)
+      setPlan(p)
+    } catch {
+      setPlan(null)
+    }
+  }, [session])
+
+  const approveStep = useCallback(async (stepId: string) => {
+    if (!session) return
+    const updated = await planApi.updateStep(session.id, stepId, 'APPROVED')
+    setPlan(updated)
+  }, [session])
+
+  const rejectStep = useCallback(async (stepId: string) => {
+    if (!session) return
+    const updated = await planApi.updateStep(session.id, stepId, 'REJECTED')
+    setPlan(updated)
+  }, [session])
+
+  const executePlan = useCallback(async () => {
+    if (!session) return
+    const updated = await planApi.execute(session.id)
+    setPlan(updated)
   }, [session])
 
   useEffect(() => {
     return () => { connRef.current?.close() }
   }, [])
 
-  return { session, messages, isLoading, streamingText, events, pendingQuestion, connectionStatus, createSession, sendMessage, answerQuestion, closeSession }
+  return { session, messages, isLoading, streamingText, events, pendingQuestion, connectionStatus, plan, createSession, sendMessage, answerQuestion, closeSession, refreshPlan, approveStep, rejectStep, executePlan }
 }

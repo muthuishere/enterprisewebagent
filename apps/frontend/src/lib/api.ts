@@ -1,6 +1,6 @@
 import { apiRequest } from './http'
 import { endpoints } from './config'
-import type { Session, TurnResult } from '@/domain/session/types'
+import type { Session, TurnResult, Plan } from '@/domain/session/types'
 import type { TaskDefinition } from '@/domain/tasks/types'
 
 export interface ModelInfo {
@@ -37,6 +37,29 @@ export const sessionApi = {
   close: (sessionId: string) =>
     apiRequest<Record<string, unknown>>(
       `${endpoints.sessions.get(sessionId)}/close`,
+      { method: 'POST' },
+    ),
+}
+
+export const planApi = {
+  createOrGet: (sessionId: string, goal: string) =>
+    apiRequest<Plan>(
+      `${endpoints.sessions.get(sessionId)}/plan`,
+      { method: 'POST', body: JSON.stringify({ goal }) },
+    ),
+
+  get: (sessionId: string) =>
+    apiRequest<Plan>(`${endpoints.sessions.get(sessionId)}/plan`),
+
+  updateStep: (sessionId: string, stepId: string, status: string) =>
+    apiRequest<Plan>(
+      `${endpoints.sessions.get(sessionId)}/plan/steps/${stepId}`,
+      { method: 'PUT', body: JSON.stringify({ status }) },
+    ),
+
+  execute: (sessionId: string) =>
+    apiRequest<Plan>(
+      `${endpoints.sessions.get(sessionId)}/plan/execute`,
       { method: 'POST' },
     ),
 }

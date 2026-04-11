@@ -49,6 +49,7 @@ public class EventBuffer implements RuntimeEventListener {
             case WorkerStateChangedEvent e -> e.sessionId();
             case TurnCompletedEvent e -> e.sessionId();
             case TurnFailedEvent e -> e.sessionId();
+            case ThinkingEvent e -> e.sessionId();
         };
     }
 }

@@ -2,7 +2,16 @@ package com.enterprisewebagent.app.config;
 
 import com.enterprisewebagent.runtime.agents.DefaultWorkerOrchestrator;
 import com.enterprisewebagent.runtime.agents.WorkerOrchestrator;
+import com.enterprisewebagent.runtime.commands.CommandDispatcher;
+import com.enterprisewebagent.runtime.commands.CommandRegistry;
+import com.enterprisewebagent.runtime.commands.builtin.BuiltInCommandRegistrar;
+import com.enterprisewebagent.runtime.cost.CostCalculator;
+import com.enterprisewebagent.runtime.cost.SessionCostTracker;
 import com.enterprisewebagent.runtime.events.InMemoryEventPublisher;
+import com.enterprisewebagent.runtime.permissions.*;
+import com.enterprisewebagent.runtime.planning.InMemoryPlanManager;
+import com.enterprisewebagent.runtime.planning.PlanManager;
+import com.enterprisewebagent.runtime.planning.PlanModeToolFilter;
 import com.enterprisewebagent.runtime.prompt.DefaultPromptAssembler;
 import com.enterprisewebagent.runtime.prompt.InMemoryPromptSectionCache;
 import com.enterprisewebagent.runtime.prompt.PromptAssembler;
@@ -19,6 +28,7 @@ import com.enterprisewebagent.runtime.tasks.TaskManager;
 import com.enterprisewebagent.runtime.tools.DefaultToolRegistry;
 import com.enterprisewebagent.runtime.tools.ToolRegistry;
 import com.enterprisewebagent.runtime.tools.builtin.BuiltInToolRegistrar;
+import com.enterprisewebagent.runtime.tools.builtin.PlanningToolRegistrar;
 import com.enterprisewebagent.app.persistence.JpaSessionManager;
 import com.enterprisewebagent.app.persistence.JpaTaskManager;
 import com.enterprisewebagent.app.persistence.SessionRepository;
@@ -30,6 +40,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Configuration
 public class RuntimeConfig {
@@ -55,9 +67,16 @@ public class RuntimeConfig {
     }
 
     @Bean
-    public DefaultToolRegistry toolRegistry(InMemoryEventPublisher eventPublisher) {
+    public PlanManager planManager() {
+        return new InMemoryPlanManager();
+    }
+
+    @Bean
+    public DefaultToolRegistry toolRegistry(InMemoryEventPublisher eventPublisher, PlanManager planManager) {
         DefaultToolRegistry registry = new DefaultToolRegistry();
         BuiltInToolRegistrar.registerAll(registry, eventPublisher);
+        PlanningToolRegistrar.registerAll(registry, planManager);
+        registry.addFilter(new PlanModeToolFilter(planManager));
         return registry;
     }
 
@@ -90,12 +109,77 @@ public class RuntimeConfig {
     }
 
     @Bean
+    public AtomicReference<PermissionMode> permissionMode() {
+        return new AtomicReference<>(PermissionMode.AUTO_APPROVE);
+    }
+
+    @Bean
+    public CopyOnWriteArrayList<PermissionRule> permissionRules() {
+        return new CopyOnWriteArrayList<>();
+    }
+
+    @Bean
+    public BashSafetyAnalyzer bashSafetyAnalyzer() {
+        return new BashSafetyAnalyzer();
+    }
+
+    @Bean
+    public FilePathChecker filePathChecker(CopyOnWriteArrayList<PermissionRule> permissionRules) {
+        return new FilePathChecker(permissionRules);
+    }
+
+    @Bean
+    public DenialTracker denialTracker() {
+        return new DenialTracker();
+    }
+
+    @Bean
+    public PermissionEvaluator permissionEvaluator(AtomicReference<PermissionMode> permissionMode,
+                                                    BashSafetyAnalyzer bashSafetyAnalyzer,
+                                                    FilePathChecker filePathChecker,
+                                                    CopyOnWriteArrayList<PermissionRule> permissionRules) {
+        return new PermissionEvaluator(permissionMode.get(), bashSafetyAnalyzer, filePathChecker, permissionRules);
+    }
+
+    @Bean
+    public PermissionToolFilter permissionToolFilter(PermissionEvaluator permissionEvaluator) {
+        return new PermissionToolFilter(permissionEvaluator);
+    }
+
+    @Bean
+    public CostCalculator costCalculator() {
+        return new CostCalculator();
+    }
+
+    @Bean
+    public SessionCostTracker sessionCostTracker() {
+        return new SessionCostTracker();
+    }
+
+    @Bean
     public TurnEngine turnEngine(DefaultModelProviderRegistry providerRegistry,
                                   DefaultToolRegistry toolRegistry,
                                   InMemoryEventPublisher eventPublisher,
-                                  RuntimeMetrics runtimeMetrics) {
-        TurnEngine delegate = new DefaultTurnEngine(providerRegistry, toolRegistry, eventPublisher);
+                                  RuntimeMetrics runtimeMetrics,
+                                  PermissionEvaluator permissionEvaluator,
+                                  DenialTracker denialTracker,
+                                  CostCalculator costCalculator,
+                                  SessionCostTracker sessionCostTracker) {
+        TurnEngine delegate = new DefaultTurnEngine(providerRegistry, toolRegistry, eventPublisher,
+                permissionEvaluator, denialTracker, costCalculator, sessionCostTracker);
         return new ObservableTurnEngine(delegate, runtimeMetrics);
+    }
+
+    @Bean
+    public CommandRegistry commandRegistry() {
+        CommandRegistry registry = new CommandRegistry();
+        BuiltInCommandRegistrar.registerAll(registry);
+        return registry;
+    }
+
+    @Bean
+    public CommandDispatcher commandDispatcher(CommandRegistry commandRegistry) {
+        return new CommandDispatcher(commandRegistry);
     }
 
     @Bean

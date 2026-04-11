@@ -17,10 +17,29 @@ export interface TurnResult {
   output: string
   completed: boolean
   toolCalls: number
+  isCommand?: boolean
 }
 
 export interface ChatMessage {
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'command'
   content: string
   timestamp: Date
+}
+
+export type PlanStepStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
+export type PlanModeType = 'OFF' | 'PLANNING' | 'REVIEWING' | 'EXECUTING'
+
+export interface PlanStep {
+  id: string
+  description: string
+  status: PlanStepStatus
+  result?: string
+}
+
+export interface Plan {
+  sessionId: string
+  goal: string
+  mode: PlanModeType
+  created: string
+  steps: PlanStep[]
 }

@@ -12,5 +12,11 @@ public class BuiltInToolRegistrar {
         registry.registerExecutor(new ShellTool());
         registry.registerExecutor(new TaskStopTool());
         registry.registerExecutor(new WorkerDelegationTool());
+        registry.registerExecutor(new GlobTool());
+        registry.registerExecutor(new GrepTool());
+        registry.registerExecutor(new WebSearchTool());
+        registry.registerExecutor(new WebFetchTool());
+        registry.registerExecutor(new FileWriteTool());
+        registry.registerExecutor(new SleepTool());
     }
 }

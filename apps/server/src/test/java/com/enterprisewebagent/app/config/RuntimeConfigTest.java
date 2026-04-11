@@ -1,7 +1,12 @@
 package com.enterprisewebagent.app.config;
 
 import com.enterprisewebagent.runtime.agents.WorkerOrchestrator;
+import com.enterprisewebagent.runtime.cost.CostCalculator;
+import com.enterprisewebagent.runtime.cost.SessionCostTracker;
 import com.enterprisewebagent.runtime.events.InMemoryEventPublisher;
+import com.enterprisewebagent.runtime.permissions.DenialTracker;
+import com.enterprisewebagent.runtime.permissions.PermissionEvaluator;
+import com.enterprisewebagent.runtime.planning.PlanManager;
 import com.enterprisewebagent.runtime.prompt.PromptAssembler;
 import com.enterprisewebagent.runtime.prompt.PromptSectionCache;
 import com.enterprisewebagent.runtime.prompt.PromptSectionRegistry;
@@ -35,13 +40,19 @@ class RuntimeConfigTest {
         PromptSectionRegistry registry = config.promptSectionRegistry();
         PromptAssembler assembler = config.promptAssembler(registry, cache);
         InMemoryEventPublisher eventPublisher = config.eventPublisher();
-        DefaultToolRegistry toolRegistry = config.toolRegistry(eventPublisher);
+        PlanManager planManager = config.planManager();
+        DefaultToolRegistry toolRegistry = config.toolRegistry(eventPublisher, planManager);
         SessionManager sessionManager = config.sessionManager(
                 mock(SessionRepository.class), mock(TranscriptEntryRepository.class));
         TaskManager taskManager = config.taskManager(mock(TaskRepository.class));
         DefaultModelProviderRegistry providerRegistry = config.modelProviderRegistry("stub", null);
         RuntimeMetrics runtimeMetrics = new RuntimeMetrics(new SimpleMeterRegistry());
-        TurnEngine turnEngine = config.turnEngine(providerRegistry, toolRegistry, eventPublisher, runtimeMetrics);
+        PermissionEvaluator permissionEvaluator = mock(PermissionEvaluator.class);
+        DenialTracker denialTracker = config.denialTracker();
+        CostCalculator costCalculator = config.costCalculator();
+        SessionCostTracker sessionCostTracker = config.sessionCostTracker();
+        TurnEngine turnEngine = config.turnEngine(providerRegistry, toolRegistry, eventPublisher, runtimeMetrics,
+                permissionEvaluator, denialTracker, costCalculator, sessionCostTracker);
         WorkerOrchestrator orchestrator = config.workerOrchestrator(turnEngine, assembler, toolRegistry, eventPublisher);
 
         assertNotNull(cache);
@@ -59,7 +70,8 @@ class RuntimeConfigTest {
     @Test
     void toolRegistryHasBuiltInTools() {
         InMemoryEventPublisher eventPublisher = config.eventPublisher();
-        DefaultToolRegistry toolRegistry = config.toolRegistry(eventPublisher);
+        PlanManager planManager = config.planManager();
+        DefaultToolRegistry toolRegistry = config.toolRegistry(eventPublisher, planManager);
         var tools = toolRegistry.resolveTools(new ToolContext("test", "normal", Set.of()));
         assertFalse(tools.isEmpty(), "Built-in tools should be registered");
 

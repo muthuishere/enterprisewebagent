@@ -9,6 +9,7 @@ export type RuntimeEvent =
   | { type: 'turn_failed'; sessionId: string; error: string }
   | { type: 'task_state_changed'; sessionId: string; taskId: string; newState: string }
   | { type: 'ask_user_requested'; sessionId: string; question: string; choices: string[] }
+  | { type: 'thinking'; sessionId: string; thinkingContent: string }
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected'
 

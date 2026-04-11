@@ -130,13 +130,13 @@ class DefaultToolRegistryTest {
     void coordinatorModeReturnsAllTools() {
         ToolContext ctx = new ToolContext("s1", "COORDINATOR", Set.of());
         List<ToolDefinition> tools = registry.resolveTools(ctx);
-        assertEquals(6, tools.size());
+        assertEquals(12, tools.size());
     }
 
     @Test
     void nullModeDefaultsToNormal() {
         ToolContext ctx = new ToolContext("s1", null, Set.of());
         List<ToolDefinition> tools = registry.resolveTools(ctx);
-        assertEquals(6, tools.size());
+        assertEquals(12, tools.size());
     }
 }

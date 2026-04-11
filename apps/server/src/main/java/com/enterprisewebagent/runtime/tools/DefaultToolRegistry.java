@@ -19,6 +19,7 @@ public class DefaultToolRegistry implements ToolRegistry {
     private final ConcurrentHashMap<String, ToolExecutor> executors = new ConcurrentHashMap<>();
     private final DenyRuleFilter denyRuleFilter = new DenyRuleFilter();
     private final ModeToolFilter modeToolFilter = new ModeToolFilter();
+    private final List<ToolFilter> additionalFilters = new ArrayList<>();
 
     @Override
     public void register(ToolDefinition tool) {
@@ -45,6 +46,10 @@ public class DefaultToolRegistry implements ToolRegistry {
         denyRuleFilter.addDenyRule(toolName);
     }
 
+    public void addFilter(ToolFilter filter) {
+        additionalFilters.add(filter);
+    }
+
     @Override
     public List<ToolDefinition> resolveTools(ToolContext context) {
         List<ToolDefinition> allTools = new ArrayList<>(tools.values());
@@ -52,7 +57,12 @@ public class DefaultToolRegistry implements ToolRegistry {
         List<ToolDefinition> afterDeny = denyRuleFilter.filter(allTools, context);
         List<ToolDefinition> afterMode = modeToolFilter.filter(afterDeny, context);
 
-        List<ToolDefinition> sorted = new ArrayList<>(afterMode);
+        List<ToolDefinition> filtered = afterMode;
+        for (ToolFilter filter : additionalFilters) {
+            filtered = filter.filter(filtered, context);
+        }
+
+        List<ToolDefinition> sorted = new ArrayList<>(filtered);
         sorted.sort(Comparator.comparing(ToolDefinition::name));
 
         int deniedCount = allTools.size() - afterDeny.size();

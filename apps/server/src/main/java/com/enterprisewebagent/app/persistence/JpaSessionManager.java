@@ -81,4 +81,24 @@ public class JpaSessionManager implements SessionManager {
         return new Session(entity.getId(), entity.getWorkspaceId(), entity.getCreatedAt(),
                 entity.getLastActiveAt(), entity.getStatus(), transcript);
     }
+
+    @Override
+    public void tagSession(String sessionId, String tag) {
+        throw new UnsupportedOperationException("Not implemented in JPA session manager");
+    }
+
+    @Override
+    public List<String> getTags(String sessionId) {
+        throw new UnsupportedOperationException("Not implemented in JPA session manager");
+    }
+
+    @Override
+    public List<Session> findByTag(String tag) {
+        throw new UnsupportedOperationException("Not implemented in JPA session manager");
+    }
+
+    @Override
+    public String exportSession(String sessionId, String format) {
+        throw new UnsupportedOperationException("Not implemented in JPA session manager");
+    }
 }

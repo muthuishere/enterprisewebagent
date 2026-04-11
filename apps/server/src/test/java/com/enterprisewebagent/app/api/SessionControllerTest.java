@@ -1,13 +1,20 @@
 package com.enterprisewebagent.app.api;
 
+import com.enterprisewebagent.runtime.commands.CommandDispatcher;
+import com.enterprisewebagent.runtime.commands.CommandRegistry;
+import com.enterprisewebagent.runtime.commands.builtin.BuiltInCommandRegistrar;
+import com.enterprisewebagent.runtime.planning.PlanManager;
 import com.enterprisewebagent.runtime.prompt.PromptAssembler;
 import com.enterprisewebagent.runtime.prompt.PromptSection;
+import com.enterprisewebagent.runtime.provider.DefaultModelProviderRegistry;
+import com.enterprisewebagent.runtime.provider.StubModelProvider;
 import com.enterprisewebagent.runtime.query.TurnEngine;
 import com.enterprisewebagent.runtime.query.TurnResult;
 import com.enterprisewebagent.runtime.session.InMemorySessionManager;
 import com.enterprisewebagent.runtime.session.Session;
 import com.enterprisewebagent.runtime.session.SessionManager;
 import com.enterprisewebagent.runtime.session.SessionStatus;
+import com.enterprisewebagent.runtime.tasks.TaskManager;
 import com.enterprisewebagent.runtime.tools.ToolDefinition;
 import com.enterprisewebagent.runtime.tools.ToolRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +54,18 @@ class SessionControllerTest {
 
     @MockitoBean
     private ToolRegistry toolRegistry;
+
+    @MockitoBean
+    private PlanManager planManager;
+
+    @MockitoBean
+    private TaskManager taskManager;
+
+    @MockitoBean
+    private DefaultModelProviderRegistry modelProviderRegistry;
+
+    @MockitoBean
+    private CommandDispatcher commandDispatcher;
 
     private Session testSession;
 
