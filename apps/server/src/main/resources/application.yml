@@ -28,6 +28,11 @@ spring:
         options:
           model: ${ANTHROPIC_MODEL:claude-sonnet-4-20250514}
           temperature: 0.7
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${OLLAMA_MODEL:llama3.2}
 
 management:
   endpoints:
@@ -54,6 +59,13 @@ app:
     #   - name: github
     #     url: http://localhost:3000/mcp
 
+  providers:
+    ollama:
+      enabled: ${APP_OLLAMA_ENABLED:false}
+    copilot:
+      enabled: ${APP_COPILOT_ENABLED:false}
+    codex:
+      enabled: ${APP_CODEX_ENABLED:false}
   default-provider: ${APP_DEFAULT_PROVIDER:stub}
   auth:
     enabled: ${APP_AUTH_ENABLED:false}
