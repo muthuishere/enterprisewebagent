@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { sessionApi } from '@/lib/api'
 import { connectSession } from '@/lib/ws'
 import type { Session, ChatMessage } from './types'
-import type { RuntimeEvent } from '@/lib/ws'
+import type { RuntimeEvent, ConnectionStatus, SessionConnection } from '@/lib/ws'
 
 export interface PendingQuestion {
   question: string
@@ -16,23 +16,28 @@ export function useSession() {
   const [streamingText, setStreamingText] = useState('')
   const [events, setEvents] = useState<RuntimeEvent[]>([])
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
+  const connRef = useRef<SessionConnection | null>(null)
 
   const createSession = useCallback(async () => {
     const newSession = await sessionApi.create()
     setSession(newSession)
     setMessages([])
 
-    const ws = connectSession(newSession.id, (event) => {
-      setEvents((prev) => [...prev, event])
-      if (event.type === 'token_delta') {
-        setStreamingText((prev) => prev + event.text)
-      }
-      if (event.type === 'ask_user_requested') {
-        setPendingQuestion({ question: event.question, choices: event.choices })
-      }
-    })
-    wsRef.current = ws
+    const conn = connectSession(
+      newSession.id,
+      (event) => {
+        setEvents((prev) => [...prev, event])
+        if (event.type === 'token_delta') {
+          setStreamingText((prev) => prev + event.text)
+        }
+        if (event.type === 'ask_user_requested') {
+          setPendingQuestion({ question: event.question, choices: event.choices })
+        }
+      },
+      setConnectionStatus,
+    )
+    connRef.current = conn
 
     return newSession
   }, [])
@@ -70,15 +75,16 @@ export function useSession() {
 
   const closeSession = useCallback(async () => {
     if (!session) return
-    wsRef.current?.close()
+    connRef.current?.close()
     await sessionApi.close(session.id)
     setSession(null)
     setMessages([])
+    setConnectionStatus('disconnected')
   }, [session])
 
   useEffect(() => {
-    return () => { wsRef.current?.close() }
+    return () => { connRef.current?.close() }
   }, [])
 
-  return { session, messages, isLoading, streamingText, events, pendingQuestion, createSession, sendMessage, answerQuestion, closeSession }
+  return { session, messages, isLoading, streamingText, events, pendingQuestion, connectionStatus, createSession, sendMessage, answerQuestion, closeSession }
 }

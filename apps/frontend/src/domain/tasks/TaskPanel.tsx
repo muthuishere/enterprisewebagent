@@ -25,10 +25,10 @@ export function TaskPanel({ sessionId }: { sessionId: string }) {
   if (tasks.length === 0) return null
 
   return (
-    <div style={{ padding: '0.5rem 1rem', borderTop: '1px solid #e0e0e0' }}>
-      <h3 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem' }}>Tasks</h3>
+    <div style={{ padding: '0.5rem 1rem' }}>
+      <h3 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Tasks</h3>
       {tasks.map((task) => (
-        <div key={task.id} style={{ fontSize: '0.8rem', padding: '0.25rem 0', display: 'flex', gap: '0.5rem' }}>
+        <div key={task.id} style={{ fontSize: '0.8rem', padding: '0.25rem 0', display: 'flex', gap: '0.5rem', color: 'var(--color-text)' }}>
           <span style={{ fontWeight: 'bold', color: statusColors[task.status] ?? '#888' }}>[{task.status}]</span>
           <span>{task.description}</span>
         </div>
