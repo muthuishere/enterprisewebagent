@@ -5,6 +5,7 @@ public sealed interface RuntimeEvent permits
         TokenDeltaEvent,
         ToolRequestedEvent,
         ToolCompletedEvent,
+        AskUserRequestedEvent,
         TaskStateChangedEvent,
         WorkerStateChangedEvent,
         TurnCompletedEvent,

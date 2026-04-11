@@ -95,6 +95,27 @@ class EventSerializerTest {
     }
 
     @Test
+    void askUserRequestedEventSerialization() {
+        var event = new AskUserRequestedEvent("s1", "Pick a color", java.util.List.of("red", "blue"));
+        var json = EventSerializer.toJson(event);
+
+        assertTrue(json.contains("\"type\":\"ask_user_requested\""));
+        assertTrue(json.contains("\"sessionId\":\"s1\""));
+        assertTrue(json.contains("\"question\":\"Pick a color\""));
+        assertTrue(json.contains("\"choices\":[\"red\",\"blue\"]"));
+    }
+
+    @Test
+    void askUserRequestedEventSerializationEmptyChoices() {
+        var event = new AskUserRequestedEvent("s2", "What now?", java.util.List.of());
+        var json = EventSerializer.toJson(event);
+
+        assertTrue(json.contains("\"type\":\"ask_user_requested\""));
+        assertTrue(json.contains("\"question\":\"What now?\""));
+        assertTrue(json.contains("\"choices\":[]"));
+    }
+
+    @Test
     void specialCharactersAreEscaped() {
         var event = new TokenDeltaEvent("s1", "line1\nline2\t\"quoted\"");
         var json = EventSerializer.toJson(event);

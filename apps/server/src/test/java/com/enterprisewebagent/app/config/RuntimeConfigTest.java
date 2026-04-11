@@ -35,7 +35,7 @@ class RuntimeConfigTest {
         PromptSectionRegistry registry = config.promptSectionRegistry();
         PromptAssembler assembler = config.promptAssembler(registry, cache);
         InMemoryEventPublisher eventPublisher = config.eventPublisher();
-        DefaultToolRegistry toolRegistry = config.toolRegistry();
+        DefaultToolRegistry toolRegistry = config.toolRegistry(eventPublisher);
         SessionManager sessionManager = config.sessionManager(
                 mock(SessionRepository.class), mock(TranscriptEntryRepository.class));
         TaskManager taskManager = config.taskManager(mock(TaskRepository.class));
@@ -58,7 +58,8 @@ class RuntimeConfigTest {
 
     @Test
     void toolRegistryHasBuiltInTools() {
-        DefaultToolRegistry toolRegistry = config.toolRegistry();
+        InMemoryEventPublisher eventPublisher = config.eventPublisher();
+        DefaultToolRegistry toolRegistry = config.toolRegistry(eventPublisher);
         var tools = toolRegistry.resolveTools(new ToolContext("test", "normal", Set.of()));
         assertFalse(tools.isEmpty(), "Built-in tools should be registered");
 

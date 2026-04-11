@@ -1,5 +1,6 @@
 package com.enterprisewebagent.runtime.events;
 
+import java.util.List;
 import java.util.Map;
 
 public final class EventSerializer {
@@ -28,6 +29,11 @@ public final class EventSerializer {
                             "\"name\":" + quote(e.result().name()) + "," +
                             "\"output\":" + quote(escape(e.result().output())) + "," +
                             "\"success\":" + e.result().success() + "}");
+
+            case AskUserRequestedEvent e -> buildJson("ask_user_requested",
+                    "\"sessionId\":" + quote(e.sessionId()),
+                    "\"question\":" + quote(escape(e.question())),
+                    "\"choices\":" + listToJson(e.choices()));
 
             case TaskStateChangedEvent e -> buildJson("task_state_changed",
                     "\"sessionId\":" + quote(e.sessionId()),
@@ -87,6 +93,19 @@ public final class EventSerializer {
             sb.append(valueToJson(entry.getValue()));
         }
         sb.append('}');
+        return sb.toString();
+    }
+
+    private static String listToJson(List<String> list) {
+        if (list == null || list.isEmpty()) return "[]";
+        var sb = new StringBuilder("[");
+        var first = true;
+        for (String item : list) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append(quote(escape(item)));
+        }
+        sb.append(']');
         return sb.toString();
     }
 

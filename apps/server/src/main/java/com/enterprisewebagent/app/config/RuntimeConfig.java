@@ -55,9 +55,9 @@ public class RuntimeConfig {
     }
 
     @Bean
-    public DefaultToolRegistry toolRegistry() {
+    public DefaultToolRegistry toolRegistry(InMemoryEventPublisher eventPublisher) {
         DefaultToolRegistry registry = new DefaultToolRegistry();
-        BuiltInToolRegistrar.registerAll(registry);
+        BuiltInToolRegistrar.registerAll(registry, eventPublisher);
         return registry;
     }
 

@@ -4,8 +4,9 @@ import { useSession } from './useSession'
 import { TaskPanel } from '@/domain/tasks/TaskPanel'
 
 export function SessionPage() {
-  const { session, messages, isLoading, streamingText, createSession, sendMessage, closeSession } = useSession()
+  const { session, messages, isLoading, streamingText, pendingQuestion, createSession, sendMessage, answerQuestion, closeSession } = useSession()
   const [input, setInput] = useState('')
+  const [freeformAnswer, setFreeformAnswer] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -17,6 +18,13 @@ export function SessionPage() {
     if (!input.trim() || isLoading) return
     sendMessage(input.trim())
     setInput('')
+  }
+
+  const handleFreeformSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    if (!freeformAnswer.trim()) return
+    answerQuestion(freeformAnswer.trim())
+    setFreeformAnswer('')
   }
 
   if (!session) {
@@ -67,6 +75,35 @@ export function SessionPage() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Ask-user modal overlay */}
+      {pendingQuestion && (
+        <div style={overlayStyle}>
+          <div style={modalStyle}>
+            <p style={{ margin: '0 0 1rem', fontSize: '1.05rem', fontWeight: 500 }}>{pendingQuestion.question}</p>
+            {pendingQuestion.choices.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {pendingQuestion.choices.map((choice) => (
+                  <button key={choice} onClick={() => { answerQuestion(choice); setFreeformAnswer('') }} style={choiceButtonStyle}>
+                    {choice}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <form onSubmit={handleFreeformSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  value={freeformAnswer}
+                  onChange={(e) => setFreeformAnswer(e.target.value)}
+                  placeholder="Type your answer..."
+                  autoFocus
+                  style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid #ccc', fontSize: '1rem' }}
+                />
+                <button type="submit" disabled={!freeformAnswer.trim()} style={buttonStyle}>Send</button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Task panel */}
       <TaskPanel sessionId={session.id} />
 
@@ -102,4 +139,34 @@ const buttonSmallStyle: CSSProperties = {
   padding: '0.25rem 0.75rem',
   fontSize: '0.875rem',
   backgroundColor: '#dc3545',
+}
+
+const overlayStyle: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 1000,
+}
+
+const modalStyle: CSSProperties = {
+  backgroundColor: '#fff',
+  borderRadius: '0.75rem',
+  padding: '1.5rem',
+  maxWidth: '28rem',
+  width: '90%',
+  boxShadow: '0 4px 24px rgba(0, 0, 0, 0.2)',
+}
+
+const choiceButtonStyle: CSSProperties = {
+  padding: '0.5rem 1rem',
+  borderRadius: '0.5rem',
+  border: '1px solid #007bff',
+  backgroundColor: '#fff',
+  color: '#007bff',
+  cursor: 'pointer',
+  fontSize: '1rem',
+  textAlign: 'left',
 }

@@ -1,5 +1,6 @@
 package com.enterprisewebagent.runtime.tools;
 
+import com.enterprisewebagent.runtime.events.InMemoryEventPublisher;
 import com.enterprisewebagent.runtime.tools.builtin.BuiltInToolRegistrar;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,7 @@ class DefaultToolRegistryTest {
     @BeforeEach
     void setUp() {
         registry = new DefaultToolRegistry();
-        BuiltInToolRegistrar.registerAll(registry);
+        BuiltInToolRegistrar.registerAll(registry, new InMemoryEventPublisher());
     }
 
     @Test
