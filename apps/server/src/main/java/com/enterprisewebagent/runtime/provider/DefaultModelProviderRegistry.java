@@ -42,4 +42,8 @@ public class DefaultModelProviderRegistry implements ModelProviderRegistry {
         }
         this.defaultProviderId = providerId;
     }
+
+    public String getDefaultProviderId() {
+        return defaultProviderId;
+    }
 }

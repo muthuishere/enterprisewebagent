@@ -10,18 +10,26 @@ import com.enterprisewebagent.runtime.prompt.PromptSectionCache;
 import com.enterprisewebagent.runtime.prompt.PromptSectionRegistry;
 import com.enterprisewebagent.runtime.provider.DefaultModelProviderRegistry;
 import com.enterprisewebagent.runtime.provider.ModelProvider;
+import com.enterprisewebagent.runtime.provider.SpringAiModelProvider;
 import com.enterprisewebagent.runtime.provider.StubModelProvider;
 import com.enterprisewebagent.runtime.query.DefaultTurnEngine;
 import com.enterprisewebagent.runtime.query.TurnEngine;
-import com.enterprisewebagent.runtime.session.InMemorySessionManager;
 import com.enterprisewebagent.runtime.session.SessionManager;
-import com.enterprisewebagent.runtime.tasks.InMemoryTaskManager;
 import com.enterprisewebagent.runtime.tasks.TaskManager;
 import com.enterprisewebagent.runtime.tools.DefaultToolRegistry;
 import com.enterprisewebagent.runtime.tools.ToolRegistry;
 import com.enterprisewebagent.runtime.tools.builtin.BuiltInToolRegistrar;
+import com.enterprisewebagent.app.persistence.JpaSessionManager;
+import com.enterprisewebagent.app.persistence.JpaTaskManager;
+import com.enterprisewebagent.app.persistence.SessionRepository;
+import com.enterprisewebagent.app.persistence.TaskRepository;
+import com.enterprisewebagent.app.persistence.TranscriptEntryRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.List;
 
 @Configuration
 public class RuntimeConfig {
@@ -54,28 +62,41 @@ public class RuntimeConfig {
     }
 
     @Bean
-    public SessionManager sessionManager() {
-        return new InMemorySessionManager();
+    public SessionManager sessionManager(SessionRepository sessionRepository,
+                                          TranscriptEntryRepository transcriptEntryRepository) {
+        return new JpaSessionManager(sessionRepository, transcriptEntryRepository);
     }
 
     @Bean
-    public TaskManager taskManager() {
-        return new InMemoryTaskManager();
+    public TaskManager taskManager(TaskRepository taskRepository) {
+        return new JpaTaskManager(taskRepository);
     }
 
     @Bean
-    public DefaultModelProviderRegistry modelProviderRegistry() {
+    public DefaultModelProviderRegistry modelProviderRegistry(
+            @Value("${app.runtime.default-provider:stub}") String defaultProvider,
+            @Autowired(required = false) List<SpringAiModelProvider> aiProviders) {
         DefaultModelProviderRegistry registry = new DefaultModelProviderRegistry();
         registry.register("stub", new StubModelProvider("I'm the enterprise web agent. How can I help?"));
+        if (aiProviders != null) {
+            for (SpringAiModelProvider provider : aiProviders) {
+                registry.register(provider.providerId(), provider);
+            }
+        }
+        if (registry.availableProviders().contains(defaultProvider)) {
+            registry.setDefault(defaultProvider);
+        }
         return registry;
     }
 
     @Bean
     public TurnEngine turnEngine(DefaultModelProviderRegistry providerRegistry,
                                   DefaultToolRegistry toolRegistry,
-                                  InMemoryEventPublisher eventPublisher) {
+                                  InMemoryEventPublisher eventPublisher,
+                                  RuntimeMetrics runtimeMetrics) {
         ModelProvider provider = providerRegistry.getProvider(null);
-        return new DefaultTurnEngine(provider, toolRegistry, eventPublisher);
+        TurnEngine delegate = new DefaultTurnEngine(provider, toolRegistry, eventPublisher);
+        return new ObservableTurnEngine(delegate, runtimeMetrics);
     }
 
     @Bean

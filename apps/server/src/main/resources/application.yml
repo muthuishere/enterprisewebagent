@@ -7,21 +7,59 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
   h2:
     console:
       enabled: true
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          model: ${OPENAI_MODEL:gpt-4o}
+          temperature: 0.7
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      chat:
+        options:
+          model: ${ANTHROPIC_MODEL:claude-sonnet-4-20250514}
+          temperature: 0.7
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: enterprisewebagent
 
 app:
   stream:
     transport: ${APP_STREAM_TRANSPORT:websocket}
   runtime:
     mode: ${APP_RUNTIME_MODE:hosted}
+  mcp:
+    enabled: ${APP_MCP_ENABLED:false}
+    servers: []
+    # Example:
+    # servers:
+    #   - name: filesystem
+    #     command: npx
+    #     args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    #   - name: github
+    #     url: http://localhost:3000/mcp
+
+  default-provider: ${APP_DEFAULT_PROVIDER:stub}
+  auth:
+    enabled: ${APP_AUTH_ENABLED:false}
+    api-keys:
+      - ${APP_API_KEY_1:}
+      - ${APP_API_KEY_2:}
+
+spring.ai.mcp.client.enabled: false
 
