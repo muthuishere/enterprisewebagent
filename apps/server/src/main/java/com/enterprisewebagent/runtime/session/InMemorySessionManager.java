@@ -61,4 +61,23 @@ public class InMemorySessionManager implements SessionManager {
         );
         sessions.put(sessionId, closed);
     }
+
+    @Override
+    public void appendTranscript(String sessionId, TranscriptEntry entry) {
+        var existing = sessions.get(sessionId);
+        if (existing == null) {
+            throw new IllegalArgumentException("Session not found: " + sessionId);
+        }
+        var newTranscript = new ArrayList<>(existing.transcript());
+        newTranscript.add(entry);
+        var updated = new Session(
+                existing.id(),
+                existing.workspaceId(),
+                existing.created(),
+                Instant.now(),
+                existing.status(),
+                List.copyOf(newTranscript)
+        );
+        sessions.put(sessionId, updated);
+    }
 }
