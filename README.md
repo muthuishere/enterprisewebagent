@@ -1,6 +1,6 @@
 # enterprisewebagent
 
-Java-first agent runtime product with a Spring-hosted backend, React web UI, and a lightweight Picocli CLI.
+Java-first agent runtime product with a Spring-hosted backend, React web UI, and a lightweight Picocli CLI. Functionally modeled after Claude Code with enterprise-grade architecture.
 
 ## Repository Shape
 
@@ -39,7 +39,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full runtime architec
 
 ### Key Boundaries
 
-- **Server** owns the runtime core: prompt assembly, tool registry, turn execution, worker orchestration, session/task state, runtime events
+- **Server** owns the runtime core: prompt assembly, tool registry, turn execution, worker orchestration, session/task state, runtime events, planning, permissions, cost tracking, slash commands
 - **Spring AI** is behind the provider boundary — used for LLM access and MCP, never for prompt design or orchestration
 - **CLI** is a Picocli app that talks to the server via HTTP/WebSocket — same contracts as the frontend
 - **Frontend** is a React app consuming the runtime's API and WebSocket streaming
@@ -49,39 +49,48 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full runtime architec
 | Package | Responsibility |
 |---------|---------------|
 | `runtime.prompt` | 5-level prompt precedence, 12-surface catalog, section caching |
-| `runtime.tools` | Tool registry with deny→mode→sort pipeline, 6 built-in tools |
-| `runtime.query` | Turn engine (tool-call loop, max 10 iterations), streaming, compaction |
-| `runtime.agents` | Coordinator/worker orchestration, depth-limited delegation |
+| `runtime.tools` | Tool registry with deny→mode→permission pipeline, 23 built-in tools + MCP bridge |
+| `runtime.commands` | Slash command system — 15 commands (/help, /plan, /review, /cost, /model…) |
+| `runtime.query` | Turn engine (tool-call loop), extended thinking, transcript compaction |
+| `runtime.agents` | Coordinator/worker orchestration, custom agent definitions |
+| `runtime.teams` | Multi-agent team collaboration, message passing |
+| `runtime.planning` | Plan mode (4 phases), step approval, plan-aware tool filtering |
+| `runtime.permissions` | Auto-approval classifier, bash safety, file path checking, denial tracking |
+| `runtime.cost` | USD cost per model/turn/session, pricing catalog |
 | `runtime.skills` | Markdown skill loading with frontmatter, PROJECT→USER→MANAGED |
-| `runtime.events` | Sealed RuntimeEvent interface, 8 event types, async publisher |
-| `runtime.memory` | Session memory, memory store |
-| `runtime.provider` | Spring AI adapter, model provider registry |
-| `runtime.session` | Session lifecycle, compaction manager |
-| `runtime.tasks` | Task lifecycle, status tracking |
-| `app.api` | REST controllers (Session, Task, Config) |
+| `runtime.events` | Sealed RuntimeEvent interface, 10 event types, async publisher |
+| `runtime.memory` | MEMORY.md persistence, auto-summarization, session memory |
+| `runtime.hooks` | Pre/post hooks for turns, tools, files, sessions (7 hook types) |
+| `runtime.provider` | 5 LLM providers (OpenAI, Anthropic, Ollama, Copilot, Codex), prefix routing |
+| `runtime.session` | Session lifecycle, tagging, export (markdown/JSON/summary) |
+| `runtime.tasks` | Task lifecycle, JPA persistence |
+| `app.api` | REST controllers (Session, Task, Config, Cost, Permission) |
 | `app.ws` | WebSocket streaming handler |
-| `app.config` | Spring bean wiring |
+| `app.config` | Spring bean wiring, auth, observability |
 
 ## Current State
 
-**Phase 1 complete** — all 17 handoff steps implemented.
+**Phase 4 complete** — functional parity with core Claude Code features.
 
 | Metric | Value |
 |--------|-------|
-| Server source files | 98 |
-| Server test files | 33 (all green) |
-| CLI source files | 7 |
-| CLI test files | 3 (all green) |
-| Frontend modules | 96 (builds clean, 266KB bundle) |
-| Parity score | 12/14 PASS, 1 GAP, 1 PARTIAL |
+| Runtime source files | 187 |
+| App layer source files | 28 |
+| Test files | 104 (644 tests, 0 failures) |
+| Built-in tools | 23 + MCP bridge |
+| Slash commands | 15 |
+| LLM providers | 5 |
+| Event types | 10 |
+| Frontend modules | 100 (283KB bundle) |
 
-See [`docs/PARITY_VERIFICATION.md`](docs/PARITY_VERIFICATION.md) for the full parity checklist.
+### Completed Phases
 
-### Known Gaps
-
-1. **Session persistence** — currently in-memory only; `SessionManager` interface is ready for a durable implementation
-2. **Ask-user event** — `AskUserTool` works but no dedicated WebSocket event; clients parse model text
-3. **Auth** — deferred until runtime boundaries are stable
+| Phase | Scope | Status |
+|-------|-------|--------|
+| **1 — Core Parity** | 17 handoff steps: prompts, tools, events, agents, sessions, transport | ✅ |
+| **2 — Production** | JPA persistence, 5 providers, auth, observability, CLI packaging | ✅ |
+| **3 — Providers** | ProviderModels catalog, ModelRegistry, prefix routing, health detection | ✅ |
+| **4 — Functional** | 23 tools, 15 commands, plan mode, thinking, permissions, cost, memory, git, hooks, teams | ✅ |
 
 ## Key Documents
 
@@ -104,5 +113,5 @@ See [`docs/PARITY_VERIFICATION.md`](docs/PARITY_VERIFICATION.md) for the full pa
 | AI integration | Spring AI BOM 2.0 M4 |
 | CLI | Picocli 4.7.6, Java 21 HttpClient, Gson |
 | Frontend | React 19, TypeScript, Vite 6, Bun |
-| Persistence | H2 (dev), Postgres (production) |
+| Persistence | H2 (dev), Postgres (production), Flyway |
 | Task runner | Taskfile v3 with env-specific includes |

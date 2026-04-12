@@ -1,8 +1,8 @@
 # enterprisewebagent Documentation Index
 
 ## Architecture & Status
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — runtime architecture, module inventory, data flows, what remains
-- [PARITY_VERIFICATION.md](./PARITY_VERIFICATION.md) — Step 17 parity checklist (12/14 PASS)
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — runtime architecture, module inventory, data flows (Phase 4 complete)
+- [PARITY_VERIFICATION.md](./PARITY_VERIFICATION.md) — Step 17 parity checklist (14/14 PASS)
 
 ## Product & Requirements
 - [PRODUCT.md](./PRODUCT.md)
