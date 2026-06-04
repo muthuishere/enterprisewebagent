@@ -1,8 +1,10 @@
 # enterprisewebagent Documentation Index
 
 ## Architecture & Status
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — runtime architecture, module inventory, data flows (Phase 4 complete)
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — current (hosted) runtime architecture, module inventory, data flows (Phase 4 complete)
 - [PARITY_VERIFICATION.md](./PARITY_VERIFICATION.md) — Step 17 parity checklist (14/14 PASS)
+- [DISTRIBUTED_ARCHITECTURE.md](./DISTRIBUTED_ARCHITECTURE.md) — target: thin control plane + distributed agent workers (CLI/web as dummy clients)
+- [DISTRIBUTED_MIGRATION_PLAN.md](./DISTRIBUTED_MIGRATION_PLAN.md) — numbered 20-step plan to reach the distributed topology
 
 ## Product & Requirements
 - [PRODUCT.md](./PRODUCT.md)
