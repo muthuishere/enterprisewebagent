@@ -1,211 +1,181 @@
-# Distributed Migration Plan — Control Plane + Agent Workers
+# Migration Plan — Fat Agent + LLM-Proxy Server
 
-The numbered, reusable steps to move from the current single-process (`hosted`)
-runtime to a **control plane + distributed agent workers** topology, as
-specified in `DISTRIBUTED_ARCHITECTURE.md`.
+> **Supersedes the earlier draft of this file**, which planned a thin control
+> plane + fat worker that owned the LLM. The model was inverted; this is the
+> current plan. See `DISTRIBUTED_ARCHITECTURE.md` and `AGENT_AND_LICENSING.md`.
+
+The numbered steps to move from the single-process (`hosted`) runtime to the
+target topology:
+
+- **Server** → LLM proxy + licensing + config distribution + system-of-record
+  + live-stream relay (`app.runtime.mode=proxy`).
+- **Agent** → a new **Go** binary that owns the turn loop, prompt assembly,
+  tools, MCP, and skills, and calls the server proxy for model access.
+- **CLI (Picocli) + Web** → dummy clients that drive sessions and render the
+  relayed stream, and run the install/license flow.
 
 **Guiding rules**
 
-- `hosted` mode must keep working at every step (default, zero behavior drift).
-  The split is gated behind `app.runtime.mode`.
-- No new message broker — control plane ↔ worker is WebSocket (worker dials out).
-- Workers own execution + LLM keys; the control plane is API + orchestration only.
-- Preserve the parity contract in `PARITY_VERIFICATION.md` — turn semantics,
-  prompt precedence, tool ordering, and event types do not change.
+- `hosted` mode keeps working at every step (default, gated behind
+  `app.runtime.mode`).
+- The Go agent must preserve the behavior contract in `PARITY_VERIFICATION.md`.
+- Provider keys never leave the server; the agent calls the proxy only.
+- Live stream relays through the server — no P2P/WebRTC/TURN.
 
-Each step lists **goal · key changes · done-when**. Steps are grouped into
-phases; phases are independently shippable.
+Each step: **goal · key changes · done-when**. Phases are independently shippable.
 
 ---
 
-## Phase A — Protocol & Mode Scaffolding (no behavior change)
+## Phase A — Server becomes the proxy + control plane
 
-### Step 1 — Define the worker protocol contracts
-- **Goal:** a typed, versioned message set for the worker WS channel.
-- **Changes:** add a `protocol` package with the envelope
-  `{ type, correlationId, workerId, payload }` and the message types from the
-  spec (`REGISTER`, `HEARTBEAT`, `EVENT`, `TRANSCRIPT_APPEND`, `TURN_RESULT`,
-  `ASK_USER`, `PROVISION_RESULT`, `DISPATCH_TURN`, `RESUME_SESSION`,
-  `PROVISION`, `CANCEL`, `PING`). Reuse `RuntimeEvent` + `EventSerializer` for
-  the `EVENT` payload and the existing `TurnRequest`/`TranscriptEntry` records.
-- **Done when:** contracts compile and round-trip in a serialization unit test.
+### Step 1 — Add the `proxy` runtime mode
+- **Goal:** select the thin server without forking code.
+- **Changes:** extend `app.runtime.mode` to `hosted | proxy`
+  (`application.yml:50`); gate bean groups in the config layer with
+  `@ConditionalOnProperty`. `hosted` keeps every bean (default).
+- **Done when:** all existing tests pass in `hosted`; the server boots in
+  `proxy` with execution beans absent.
 
-### Step 2 — Define orchestration domain types
-- **Goal:** the data the control plane needs to route and audit.
-- **Changes:** `WorkerDescriptor` (id, labels, capabilities, inventory),
-  `WorkerInventory` (skills, MCP servers, providers, tool names),
-  `SessionBinding` (sessionId, workerId, boundAt, lastActive),
-  `WorkerAuditRecord`. Add Flyway migrations for `session_bindings` and
-  `worker_audit`.
-- **Done when:** migrations apply on H2 and Postgres; entities validate
-  (`ddl-auto: validate`).
+### Step 2 — LLM proxy endpoint + service
+- **Goal:** serve model completions to agents, with keys server-side.
+- **Changes:** a proxy service wrapping `runtime.provider`
+  (`ModelProvider.stream/complete`, `DefaultModelProviderRegistry`,
+  `SpringAiModelProvider`, `ProviderModels`). Accept an assembled prompt + model
+  id, route to a provider, stream back. **Server never assembles prompts.**
+- **Done when:** a test client sends a `PromptSection` list + model and receives
+  a streamed completion through the proxy against the stub provider.
 
-### Step 3 — Make bean wiring mode-aware
-- **Goal:** select component sets by `app.runtime.mode` without forking code.
-- **Changes:** extend the mode to `hosted | control-plane | worker`. Annotate
-  `RuntimeConfig` bean groups with `@ConditionalOnProperty(app.runtime.mode)`.
-  `hosted` keeps every bean (default).
-- **Done when:** all 705 existing tests pass with `mode=hosted`; the app boots
-  in each mode with placeholder beans.
+### Step 3 — Licensing service (identity + entitlements)
+- **Goal:** issue and enforce licenses.
+- **Changes:** `server.license` — issue signed tokens (agentId/customerId,
+  seats, expiry, tier, optional token budget); validate at connect; re-check +
+  meter at each proxy call. Flyway table `licenses`; usage metering hook in the
+  proxy (Step 2).
+- **Done when:** an expired/over-budget token is rejected at the proxy; valid
+  usage is metered.
 
----
+### Step 4 — Agent registry + WS endpoint (agents dial in)
+- **Goal:** accept agent connections and track them.
+- **Changes:** new agent WS endpoint (distinct from the client WS);
+  `server.agents` registry fed by `REGISTER`/`HEARTBEAT`; license check on the
+  handshake (Step 3). Flyway tables `session_bindings`, `agent_audit`.
+- **Done when:** multiple agents register concurrently and are listed via
+  `GET /api/v1/agents`.
 
-## Phase B — The Worker App
+### Step 5 — Config distribution service
+- **Goal:** push capability profiles to agents.
+- **Changes:** `server.config` — version-stamped capability profiles; serve
+  `CONFIG_PULL`; push `CONFIG_UPDATE`; `POST /agents/{id}/provision` records to
+  `agent_audit`.
+- **Done when:** provisioning a skill/MCP on agent A pushes a `CONFIG_UPDATE`
+  only to A and is audited.
 
-### Step 4 — Stand up the worker runtime
-- **Goal:** an LLM-agnostic Spring Boot process that owns execution.
-- **Changes:** under `mode=worker`, load `runtime.query` (`DefaultTurnEngine`),
-  `runtime.tools` (+ builtin file/shell/git), `runtime.skills`, MCP bridge,
-  `runtime.provider` (this worker's keys), `runtime.permissions`,
-  `runtime.planning`, `runtime.agents`. No client REST API, no DB ownership.
-- **Done when:** a worker boots, resolves its tools, and runs a turn fully
-  in-process against a stub provider.
-
-### Step 5 — Worker → control-plane link (register + heartbeat)
-- **Goal:** the worker joins the pool over an outbound WS.
-- **Changes:** `worker.link` WS client that dials the control plane, sends
-  `REGISTER` with the live `WorkerInventory`, then periodic `HEARTBEAT` (load,
-  active sessions, health). Auto-reconnect with backoff.
-- **Done when:** a started worker appears in the control-plane registry and
-  heartbeats; disconnect is detected.
-
-### Step 6 — Worker dispatch handler
-- **Goal:** run a dispatched turn and stream results back.
-- **Changes:** on `DISPATCH_TURN`, build the `TurnRequest`, call
-  `executeTurn()`, and ship each `RuntimeEvent` as an `EVENT` frame plus
-  `TRANSCRIPT_APPEND` per entry, ending with `TURN_RESULT`. Forward
-  `AskUserRequestedEvent` as `ASK_USER`. Honor `CANCEL`.
-- **Done when:** a turn dispatched over WS produces the same event stream a
-  `hosted` turn produces (parity check against `PARITY_VERIFICATION.md`).
+### Step 6 — System-of-record + live relay
+- **Goal:** persist synced sessions and fan live events to clients.
+- **Changes:** ingest `SESSION_SYNC` deltas → persist via `JpaSessionManager`;
+  relay the same events to client-WS subscribers (reuse
+  `StreamingWebSocketHandler` + `EventSerializer`). `SESSION_INPUT` forwards a
+  client's input down to the bound agent.
+- **Done when:** a synced transcript matches the agent's, a cold
+  `GET /sessions/{id}` returns full history, and a client sees the live stream.
 
 ---
 
-## Phase C — The Control Plane
+## Phase B — The Go agent (the runtime)
 
-### Step 7 — Worker WS endpoint + registry
-- **Goal:** accept worker connections and track them.
-- **Changes:** new WS endpoint (e.g. `/ws/worker`) distinct from the client WS;
-  `controlplane.workers` registry (in-memory liveness + persisted descriptors)
-  fed by `REGISTER`/`HEARTBEAT`. Reuse the existing auth filter on the handshake.
-- **Done when:** multiple workers register concurrently and are listed.
+### Step 7 — Scaffold the agent + link
+- **Goal:** a Go binary that connects and registers.
+- **Changes:** new `apps/agent` (Go); outbound WS client (e.g. `gorilla` /
+  `nhooyr`); `REGISTER` with license + baked-in inventory; `HEARTBEAT`;
+  auto-reconnect with backoff.
+- **Done when:** a started agent appears in the server registry and heartbeats.
 
-### Step 8 — Scheduler with sticky binding
-- **Goal:** pick a worker per session and pin it.
-- **Changes:** `controlplane.scheduler` — on first turn for a session, choose a
-  worker (capability-match → least-loaded), persist a `SessionBinding`, and
-  route all later turns for that session to the same worker.
-- **Done when:** repeated turns for one session always hit the same worker;
-  different sessions spread across workers.
+### Step 8 — Port the turn loop
+- **Goal:** drive a turn from the agent against the proxy.
+- **Changes:** port `DefaultTurnEngine` semantics to Go — prompt → `LLM_REQUEST`
+  → parse → run tools → loop (max 10); emit the same `RuntimeEvent` types; ship
+  them via `SESSION_SYNC`.
+- **Done when:** a turn driven from the agent produces the event sequence a
+  `hosted` turn produces (parity check).
 
-### Step 9 — Dispatch + event relay
-- **Goal:** turn the blocking REST turn into a dispatched, streamed turn.
-- **Changes:** `SessionController` turn endpoint → resolve binding → send
-  `DISPATCH_TURN`. `controlplane.relay` receives the worker's `EVENT` frames and
-  fans them out to the **client** WS subscribers of that session (reusing
-  `StreamingWebSocketHandler`). Return `202 + turnId`; retain a synchronous
-  compat path that awaits `TURN_RESULT` and returns the final output.
-- **Done when:** a CLI/web client submits a turn and renders the live event
-  stream end-to-end through the control plane.
+### Step 9 — Port prompt assembly
+- **Goal:** assemble prompts on the agent.
+- **Changes:** port `runtime.prompt` — 5-level precedence, 12-surface catalog,
+  section caching — and add the **local environment block** (cwd/OS/git/files).
+  Consume skill content + capability profile from `CONFIG_UPDATE`.
+- **Done when:** assembled prompts match the `hosted` assembler for equivalent
+  inputs (precedence + caching parity).
 
-### Step 10 — Persist transcript deltas centrally
-- **Goal:** DB is the source of truth for session state.
-- **Changes:** the relay persists each `TRANSCRIPT_APPEND` via `JpaSessionManager`;
-  `TURN_RESULT` finalizes the turn. The control plane never reconstructs prompts
-  — it only stores.
-- **Done when:** after a turn, the DB transcript matches the worker's, and a
-  cold `GET /sessions/{id}` returns full history.
+### Step 10 — Port local tools
+- **Goal:** run tools on the agent machine.
+- **Changes:** port `runtime.tools` builtin file/shell/git/glob/grep + the
+  deny→mode→permission pipeline + alphabetical ordering.
+- **Done when:** tool ordering + filtering + execution match `hosted`; bash/file
+  side-effects land on the agent's filesystem.
 
----
+### Step 11 — MCP hosting + skills
+- **Goal:** per-agent MCP + skills.
+- **Changes:** host MCP servers locally; load skills (PROJECT→USER→MANAGED) from
+  distributed content; apply `CONFIG_UPDATE` installs (launch MCP, write skills).
+- **Done when:** an MCP/skill provisioned to the agent is usable in its turns.
 
-## Phase D — Stickiness & Resilience
-
-### Step 11 — Failover + session resume
-- **Goal:** survive worker loss without losing sessions.
-- **Changes:** heartbeat-timeout marks a worker dead and unbinds its sessions.
-  The next turn rebinds to a healthy worker and sends `RESUME_SESSION` with the
-  transcript replayed from the DB to rebuild warm context.
-- **Done when:** killing the bound worker mid-session, then sending another
-  turn, transparently continues on a new worker with full history.
-
-### Step 12 — Backpressure & cancellation
-- **Goal:** behave under no-capacity and cancel.
-- **Changes:** queue dispatches when no worker matches; surface a pending signal
-  to the client; dispatch when capacity appears. Wire `CANCEL` from a client
-  stop action through to the worker.
-- **Done when:** turns queue and later run when a worker joins; a cancel stops
-  an in-flight turn.
+### Step 12 — Local session state + sync up
+- **Goal:** own the working dir; keep the server record current.
+- **Changes:** hold the live transcript + working directory; stream
+  `SESSION_SYNC` deltas; pin a session to this agent for its lifetime.
+- **Done when:** turn 2's bash sees turn 1's file, and the server record matches.
 
 ---
 
-## Phase E — Per-Agent Skills, MCP & Audit
+## Phase C — Make the clients dummy
 
-### Step 13 — Inventory advertisement + worker roster API
-- **Goal:** clients can see workers and what each can do.
-- **Changes:** workers advertise `WorkerInventory` on `REGISTER` and on change;
-  add `GET /api/v1/workers` and `GET /api/v1/workers/{id}`.
-- **Done when:** the roster reflects each worker's skills/MCP/providers/tools
-  and updates live.
+### Step 13 — CLI install/license + drive
+- **Goal:** Picocli CLI drives sessions and provisions agents.
+- **Changes:** add commands to request a licensed agent + install token, list
+  agents, provision skill/MCP, submit input, and render the relayed stream.
+  Remove any client-side runtime logic.
+- **Done when:** the CLI works end-to-end against a `proxy` server + a Go agent,
+  holding no execution logic.
 
-### Step 14 — Provisioning API (install skill/MCP on a specific worker)
-- **Goal:** the CLI installs a skill or MCP onto a chosen agent.
-- **Changes:** `POST /api/v1/workers/{id}/provision { type, ref, args }` →
-  control plane sends `PROVISION` → worker installs (writes to its skills dir /
-  registers the MCP server) → `PROVISION_RESULT` → updated inventory re-advertised.
-- **Done when:** provisioning a skill/MCP on worker A makes it usable there and
-  not on worker B.
-
-### Step 15 — Audit trail
-- **Goal:** every inventory change is traceable.
-- **Changes:** write each provision to `worker_audit(worker_id, actor, type,
-  ref, result, at)`; add a read endpoint.
-- **Done when:** the audit log shows who installed what, where, and when.
+### Step 14 — Web install/license + drive
+- **Goal:** the same for the Web UI.
+- **Changes:** install/license UI; agent roster + provisioning; history from the
+  server; live via the relayed WS.
+- **Done when:** the web client mirrors the CLI capabilities with no runtime
+  logic.
 
 ---
 
-## Phase F — Make the Clients Dummy
+## Phase D — Operations & rollout
 
-### Step 16 — Strip and re-point CLI + Web UI
-- **Goal:** clients submit + render only; no business logic.
-- **Changes:** CLI/web submit turns via REST, stream via the client WS, list
-  workers, target a worker, and request provisioning. Remove any client-side
-  prompt/transcript/tool logic. Confirm clients hold no execution state.
-- **Done when:** CLI and web work identically against `control-plane` mode with
-  zero runtime logic in the client.
+### Step 15 — Metering, billing & entitlement tiers
+- **Goal:** turn metering into product surfaces.
+- **Changes:** usage aggregation per agent/customer; tier definitions; budget
+  caps enforced at the proxy; reporting endpoints.
+- **Done when:** usage is queryable per customer and caps are enforced.
 
----
+### Step 16 — Observability across the proxy hop
+- **Goal:** trace work across machines.
+- **Changes:** per-agent metrics (active sessions, turn latency, tokens);
+  propagate trace context from `SESSION_INPUT`/`LLM_REQUEST` through the agent's
+  turn so a trace spans client → server → agent → proxy.
+- **Done when:** a single turn is traceable end-to-end with per-agent dashboards.
 
-## Phase G — Operations & Rollout
+### Step 17 — Agent packaging & licensed distribution
+- **Goal:** "create as many agent machines as needed."
+- **Changes:** Go cross-compile (Linux/macOS/Windows); the install token/script
+  flow; optional CLI+agent bundle; `task agent:build`, `task proxy:run`;
+  document scaling and labeling agents by capability.
+- **Done when:** N licensed agents can be installed from one artifact and point
+  at one server.
 
-### Step 17 — Worker authentication & identity
-- **Goal:** only trusted workers join.
-- **Changes:** authenticate workers on the WS handshake (shared secret via the
-  existing `app.auth` keys for v1; mTLS / per-worker identity for production).
-- **Done when:** an unauthenticated worker is rejected; authenticated workers
-  carry a stable identity in the registry and audit.
-
-### Step 18 — Observability across the WS hop
-- **Goal:** see work across machines.
-- **Changes:** per-worker metrics (active sessions, turn latency, tool counts);
-  propagate the existing trace context from control plane through `DISPATCH_TURN`
-  into the worker's turn so a trace spans both processes.
-- **Done when:** a single turn is traceable control-plane → worker → back, and
-  per-worker dashboards exist.
-
-### Step 19 — Packaging & scaling
-- **Goal:** "create as many agent machines as we need."
-- **Changes:** worker jlink/Docker image; Taskfile targets `task worker:run`
-  and `task control-plane:run`; document scaling N workers and labeling them by
-  capability.
-- **Done when:** N workers can be launched from a single image and pointed at
-  one control plane via config.
-
-### Step 20 — Parity gate & cutover
-- **Goal:** prove the split preserves behavior, then default to it.
-- **Changes:** run the `PARITY_VERIFICATION.md` checklist in split mode; add an
-  integration test that runs `control-plane` + ≥2 `worker` processes and asserts
+### Step 18 — Parity gate & cutover
+- **Goal:** prove the Go agent preserves behavior, then default to the split.
+- **Changes:** run the `PARITY_VERIFICATION.md` checklist against the Go agent;
+  an integration test that runs a `proxy` server + ≥1 Go agent and asserts
   turn/event/transcript parity with `hosted`. Document the rollout: `hosted` →
   split behind the mode flag → split as production default.
-- **Done when:** split-mode parity tests pass and the rollout runbook is written.
+- **Done when:** parity tests pass and the rollout runbook is written.
 
 ---
 
@@ -213,20 +183,21 @@ phases; phases are independently shippable.
 
 | Milestone | Steps | Outcome |
 |-----------|-------|---------|
-| **M1 — Plumbing** | 1–3 | Contracts + modes exist; `hosted` untouched. |
-| **M2 — One remote turn** | 4–10 | A turn runs on a separate worker, streamed through the control plane, persisted centrally. |
-| **M3 — Production-shaped** | 11–12 | Sticky sessions survive failover; backpressure + cancel. |
-| **M4 — Per-agent capability** | 13–15 | Per-worker skills/MCP, installable + audited. |
-| **M5 — Dummy clients** | 16 | CLI/web carry no logic. |
-| **M6 — Ops & cutover** | 17–20 | Auth, observability, scaling, parity-gated rollout. |
+| **M1 — Proxy server** | 1–6 | Server serves model calls, issues/enforces licenses, distributes config, records + relays. `hosted` untouched. |
+| **M2 — Walking agent** | 7–12 | A Go agent runs a full turn locally, calling the proxy, syncing the record up. |
+| **M3 — Dummy clients** | 13–14 | CLI + Web drive sessions and install agents; no runtime logic in clients. |
+| **M4 — Productized** | 15–18 | Metering/billing, observability, licensed packaging, parity-gated cutover. |
 
 ## Reuse Notes
 
-This plan is intended to be run repeatedly / incrementally:
-
-- Every step is gated by `app.runtime.mode`, so the split can ship dark and be
-  enabled per environment.
-- The worker protocol (Step 1) is the stable contract — new event/message types
-  extend it without reworking transport.
-- The same worker image (Step 19) is the unit of scale: add machines, label
-  them, and the scheduler (Step 8) routes by capability.
+- Every server step is gated by `app.runtime.mode`, so `proxy` can ship dark and
+  flip per environment.
+- The proxy reuses `runtime.provider` wholesale — Spring AI stays exactly behind
+  the provider boundary, as the original project principle intends.
+- The Go agent ports `runtime.query`, `runtime.prompt`, `runtime.tools`,
+  `runtime.skills` — `PARITY_VERIFICATION.md` is the behavior contract for the
+  port, not a rewrite license.
+- The protocol (`DISTRIBUTED_ARCHITECTURE.md`) is the stable contract; new
+  message/event types extend it without reworking transport.
+- One licensed agent binary (Step 17) is the unit of scale: install more
+  machines, label them, provision capabilities per agent.
